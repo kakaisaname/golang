@@ -1,0 +1,167 @@
+Golang Context包使用详解
+
+在Golang使用过程中经常需要跟协程（goroutine）打交道，在Golang中可以很方便的创建协程，只需要在函数调用前面添加一个go关键字。但是golang本身并没有提供对协程本身进行控制的手段。比如需要在协程的创建者结束时同时结束其创建的协程。
+
+context包在Golang 1.7时加入到标准库中。其设计目标是给Golang提供一个标准接口来给其他任务发送取消信号和传递数据。其具体作用为：
+
+可以通过context发送取消信号。
+可以指定截止时间（Deadline)，context在截止时间到期后自动发送取消信号。
+可以通过context传输一些数据。
+context在Golang中最主要的用途是控制协程任务的取消，但是context除了协程以外也可以用在线程控制等非协程的情况。
+
+基本概念
+context的核心是其定义的Context接口类型。围绕着Context接口类型存在两种角色：
+
+父任务：创建Context，将Context对象传递给子任务，并且根据需要发送取消信号来结束子任务。
+子任务：使用Context类型对象，当收到父任务发来的取消信号，结束当前任务并退出。
+接下来我们从这两个角色的视角分别看一下Context对象。
+
+子任务视角
+首先我们从子任务角度看一下Context接口，父任务通过函数参数等方法传递Context接口类型的对象。子任务通过调用接口方法的方式获父任务发来的消息和数据。Context类型的定义如下：
+
+
+type Context interface {
+	Done() <-chan struct{}
+	Err() error
+	Deadline() (deadline time.Time, ok bool)
+	Value(key interface{}) interface{}
+}
+
+1
+2
+3
+4
+5
+6
+7
+type Context interface {
+    Done() <-chan struct{}
+    Err() error
+    Deadline() (deadline time.Time, ok bool)
+    Value(key interface{}) interface{}
+}
+
+Done()函数返回一个struct{} 类型的只读管道，此管道代表着取消信号，当管道关闭时子任务应当结束当前任务并退出。
+Err()返回一个error类型变量。还没有收到结束信号时应返回nil,当收到取消信号后用于表示取消原因，通常的取消原因有两种Canceled和DeadlineExceeded，分别代表着被主动取消和超时取消。
+Deadline 返回父任务设置的超时时间，在此时间后子任务将收到取消信号，超时时间同时可以用做设置子任务当中的IO超时时间。
+Value用于获取父任务传递到子任务的数据。
+子任务使用的简单例子为：
+
+
+func SubTask(ctx context.Context) {
+	var name string
+	var ok bool
+	//获取name值
+	if name, ok = ctx.Value("name").(string); !ok {
+		name = "world"
+	}
+	for {
+		select {
+		case <-time.After(5 * time.Second):
+			fmt.Printf("hello %s\n", name)
+		case <-ctx.Done():  //Done返回的通道关闭时会匹配
+			//进入到结束逻辑从Err获取退出原因
+			fmt.Printf("stop subtask, reason %s\n", ctx.Err())
+			return
+		}
+	}
+}
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+func SubTask(ctx context.Context) {
+    var name string
+    var ok bool
+    //获取name值
+    if name, ok = ctx.Value("name").(string); !ok {
+        name = "world"
+    }
+    for {
+        select {
+        case <-time.After(5 * time.Second):
+            fmt.Printf("hello %s\n", name)
+        case <-ctx.Done():  //Done返回的通道关闭时会匹配
+            //进入到结束逻辑从Err获取退出原因
+            fmt.Printf("stop subtask, reason %s\n", ctx.Err())
+            return
+        }
+    }
+}
+
+这段程序从Context获取name的值（5-7行）。之后程序进入循环每隔5秒钟往屏幕输出字符串（10-11行）。当收到父任务发来的取消信号时（12-15行），往屏幕输出取消原因并退出。这里用到了一个关于管道的技巧，当一个管道关闭后，对管道的读取操作会一直返回对应类型的零值。
+
+父任务视角
+父任务需要创建一个Context类型的对象并传送给子任务，我们从一个最简单的Context对象创建的方法谈起，函数定义如下：
+
+
+func WithCancel(parent Context) (ctx Context, cancel CancelFunc)
+1
+func WithCancel(parent Context) (ctx Context, cancel CancelFunc)
+函数返回一个Context类型的对象以及一个CancelFunc类型的函数。 其中Context为新创建的对象，CancelFunc 是用于发送取消信号的函数。
+
+函数定义的一个有趣的地方是它需要一个Context类型的参数，这个参数是新生成Context的父Context。
+
+Context在系统中是用树状结构进行组织的。每个 Context拥有一个父Context（除了内置的Background和TODO这两个后面会讲到），每个Context还可以拥有多个子Context。使用这样的结构的原因是：
+
+让子Context中可以访问所有父Context当中的数据。
+当一个父Context收到取消信号时，会把取消信号广播到所有其子孙Context。
+这样的组织结构比较符合实际上的任务情况。设想一下，一个任务可能拥有多个子任务，而子任务也有可能拥有多个子任务。当一个任务希望取消时，可能同时希望所有自己的子孙任务也会同时取消。
+
+Context树的根是Background()函数返回的任务，Background不包含任何数据，同时Background永远不会被取消。如果当前任务没有从父任务得到的Context时我们可以从Background创建新的Context：
+
+
+ctx, cancel := context.WithCancel(context.Background())
+1
+ctx, cancel := context.WithCancel(context.Background())
+TODO()返回的Context值行为与Background的行为一致，但是一般当做其他Context的占位符来使用。
+
+
+func WithDeadline(parent Context, deadline time.Time) (Context, CancelFunc)
+func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc)
+1
+2
+func WithDeadline(parent Context, deadline time.Time) (Context, CancelFunc)
+func WithTimeout(parent Context, timeout time.Duration) (Context, CancelFunc)
+这两个函数在上面的WithCancel的基础上各多了一个参数，分别可以指定Context的截止时间或超时时间，当到达截止时间或超时时间时会自动给Context发送取消消息。
+
+
+func WithValue(parent Context, key, val interface{}) Context
+1
+func WithValue(parent Context, key, val interface{}) Context
+WithValue用于给Context添加数据。
+
+以下给出在上一节当中任务的调用例子：
+
+
+ctx := context.Background()                            //从根创建新的Context
+ctx, cancel := context.WithTimeout(ctx, 1*time.Minute) //设置超时时间为1分钟
+defer cancel()                                         //当前函数退出时，取消子任务
+ctx = context.WithValue(ctx, "name", "Hao.IO")         //给Context添加数据
+go SubTask(ctx)                                        //传递Context到子任务
+1
+2
+3
+4
+5
+ctx := context.Background()                            //从根创建新的Context
+ctx, cancel := context.WithTimeout(ctx, 1*time.Minute) //设置超时时间为1分钟
+defer cancel()                                         //当前函数退出时，取消子任务
+ctx = context.WithValue(ctx, "name", "Hao.IO")         //给Context添加数据
+go SubTask(ctx)

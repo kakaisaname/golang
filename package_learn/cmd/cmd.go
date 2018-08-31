@@ -1,10 +1,11 @@
 package main
 
 import (
-"bytes"
-"fmt"
-"log"
-"os/exec"
+	"bytes"
+	"fmt"
+	"log"
+	"os/exec"
+	"compress/gzip"
 )
 
 func main() {

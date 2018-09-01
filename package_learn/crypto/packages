@@ -1,0 +1,75 @@
+aes
+
+按照美国的定义，aes实现AES加密（以前称为Rijndael）
+
+cipher
+
+包密码实现了标准块密码模式，可以围绕低级块密码实现。
+
+des
+
+Package des实现了美国定义的数据加密标准（DES）和三重数据加密算法（TDEA）
+
+dsa
+
+软件包dsa实现了FIPS 186-3中定义的数字签名算法。
+
+ecdsa
+
+软件包ecdsa实现了FIPS 186-3中定义的椭圆曲线数字签名算法。
+
+elliptic
+
+椭圆包椭圆实现了在素数域上的几个标准椭圆曲线。
+
+hmac
+
+包hmac实现美国定义的Keyed-Hash消息认证码（HMAC）
+
+internal/cipherhw
+
+包cipherhw公开了用于检测是否存在对某些密码和认证器的硬件支持的常用功能。
+
+md5
+
+包md5实现了RFC 1321中定义的MD5哈希算法。
+
+rand
+
+Package rand实现了一个密码安全的伪随机数生成器。
+
+rc4
+
+软件包rc4实现了RC4加密，如Bruce Schneier的应用密码术中所定义。
+
+rsa
+
+软件包rsa按照PKCS＃1中的规定实现RSA加密。
+
+sha1
+
+包sha1实现了RFC 3174中定义的SHA-1哈希算法。
+
+sha256
+
+软件包sha256实现FIPS 180-4中定义的SHA224和SHA256哈希算法。
+
+sha512
+
+软件包sha512实现FIPS 180-4中定义的SHA-384，SHA-512，SHA-512/224和SHA-512/256哈希算法。
+
+subtle
+
+包微妙地实现了在密码学中经常使用的功能，但需要仔细考虑才能正确使用。
+
+tls
+
+按照RFC 5246的规定，软件包部分实现了TLS 1.2。
+
+x509
+
+软件包x509分析X.509编码的密钥和证书。
+
+x509/pkix
+
+包pkix包含用于ASN.1解析和序列化X.509证书，CRL和OCSP的共享低级别结构。

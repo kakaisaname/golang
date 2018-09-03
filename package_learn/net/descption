@@ -1,0 +1,496 @@
+import "net"
+
+net包提供了可移植的网络I/O接口，包括TCP/IP、UDP、域名解析和Unix域socket。
+
+虽然本包提供了对网络原语的访问，
+大部分使用者只需要Dial、Listen和Accept函数提供的基本接口；以及相关的Conn和Listener接口。crypto/tls包提供了相同的接口和类似的Dial和Listen函数。 -------------
+
+Dial函数和服务端建立连接：  --------------
+
+conn, err := net.Dial("tcp", "google.com:80")
+if err != nil {
+	// handle error
+}
+fmt.Fprintf(conn, "GET / HTTP/1.0\r\n\r\n")
+status, err := bufio.NewReader(conn).ReadString('\n')
+
+Listen函数创建的服务端：  --------------
+
+ln, err := net.Listen("tcp", ":8080")
+if err != nil {
+	// handle error
+}
+for {
+	conn, err := ln.Accept()
+	if err != nil {
+		// handle error
+		continue
+	}
+	go handleConnection(conn)
+}
+
+
+func ParseIP
+func ParseIP(s string) IP
+ParseIP将s解析为IP地址，并返回该地址。如果s不是合法的IP地址文本表示，ParseIP会返回nil。
+
+字符串可以是小数点分隔的IPv4格式（如"74.125.19.99"）或IPv6格式（如"2001:4860:0:2001::68"）格式
+
+func (IP) DefaultMask
+func (ip IP) DefaultMask() IPMask
+函数返回IP地址ip的默认子网掩码。只有IPv4有默认子网掩码；如果ip不是合法的IPv4地址，会返回nil
+
+
+package main
+
+import (
+	"fmt"
+	"os"
+	"net"
+)
+
+/**
+ * 将string类型的ip地址转换为IP对象  ------------------
+ */
+func main() {
+
+	name := "192.168.1.97"
+
+	ip := net.ParseIP(name)
+
+	if ip == nil {
+		fmt.Fprintf(os.Stderr, "Err:无效的地址")
+		return
+	}
+
+	fmt.Fprintf(os.Stdout, "IP: %s %s\n", ip, ip.String())
+	defaultMask := ip.DefaultMask()
+	fmt.Fprintf(os.Stdout, "DefaultMask: %s %s\n", defaultMask, defaultMask.String())
+
+	ones, bits := defaultMask.Size()
+	fmt.Fprintf(os.Stdout, "ones: %d bits: %d\n", ones, bits)
+}
+
+
+
+/**
+ * 根据IP和掩码获得网络   -------
+ */
+func main() {
+	name := "192.168.1.97"
+
+	ip := net.ParseIP(name)
+
+	mask := ip.DefaultMask()
+
+	network := ip.Mask(mask)
+
+	fmt.Fprintf(os.Stdout, "network: %s", network.String()) // 192.168.1.0
+
+	// ip: 		192.168.1.97
+	// mask:	255.255.255.0
+	// network:	192.168.1.0
+}
+
+
+
+/**
+ * 将域名解析Ip地址               ------------
+ * 获得域名对应的所有Ip地址    --------------------
+ */
+func main() {
+
+	domain := "www.baidu.com"
+	ipAddr, err := net.ResolveIPAddr("ip", domain)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Err: %s", err.Error())
+		return
+	}
+	fmt.Fprintf(os.Stdout, "%s IP: %s Network: %s Zone: %s\n", ipAddr.String(), ipAddr.IP, ipAddr.Network(), ipAddr.Zone)
+
+	// 百度，虽然只有一个域名，但实际上，他对应电信，网通，联通等又有多个IP地址
+	ns, err := net.LookupHost(domain)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Err: %s", err.Error())
+		return
+	}
+
+	for _, n := range ns {
+		fmt.Fprintf(os.Stdout, "%s", n) // 115.239.210.26    115.239.210.27 这2个地址打开都是百度
+	}
+}
+
+
+
+/**
+ * 查看主机服务器（service）占用的端口,这些服务，都是tcp或者udp的   ----------------
+ */
+func main() {
+
+	port, err := net.LookupPort("tcp", "telnet") // 查看telnet服务器使用的端口
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "未找到指定服务")
+		return
+	}
+
+	fmt.Fprintf(os.Stdout, "telnet port: %d", port)
+
+}
+
+
+
+func main() {
+
+	// TCPAddr 包涵IP 和 Port     -------------------------
+
+	// 将一个host地址转换为TCPAddr。host=ip:port
+	pTCPAddr, err := net.ResolveTCPAddr("tcp", "www.baidu.com:80")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Err: %s", err.Error())
+		return
+	}
+
+	fmt.Fprintf(os.Stdout, "www.baidu.com:80 IP: %s PORT: %d", pTCPAddr.IP.String(), pTCPAddr.Port)
+}
+
+
+
+func main() {
+
+	url := "www.baidu.com:80"
+
+	//ResolveTCPAddr将addr作为TCP地址解析并返回。参数addr格式为"host:port"或"[ipv6-host%zone]:port"，解析得到网络名和端口名；net必须是"tcp"、"tcp4"或"tcp6"。
+
+	pRemoteTCPAddr, err := net.ResolveTCPAddr("tcp4", url)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+		return
+	}
+
+	// pLocalTCPAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:7070")
+	//DialTCP在网络协议net上连接本地地址laddr和远端地址raddr。net必须是"tcp"、"tcp4"、"tcp6"；如果laddr不是nil，将使用它作为本地地址，否则自动选择一个本地地址。
+
+	pTCPConn, err := net.DialTCP("tcp", nil/*pLocalTCPAddr*/, pRemoteTCPAddr)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+		return
+	}
+
+
+	n, err := pTCPConn.Write([]byte("HEAD / HTTP/1.0\r\n\r\n"))    -------------------
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+		return
+	}
+	defer pTCPConn.Close()
+
+	fmt.Fprintf(os.Stdout, "writed: %d\n", n)
+
+	buf, err := ioutil.ReadAll(pTCPConn)
+	r := len(buf)
+	fmt.Fprintf(os.Stdout, string(buf[:r]))
+	fmt.Fprintf(os.Stdout, "readed: %d\n", r)
+
+}
+
+
+func main() {
+
+	pTCPAddr, error := net.ResolveTCPAddr("tcp4", ":7070")
+	if error != nil {
+		fmt.Fprintf(os.Stdout, "Error: %s", error.Error())
+		return
+	}
+
+	//ListenTCP在本地TCP地址laddr上声明并返回一个*TCPListener，net参数必须是"tcp"、"tcp4"、"tcp6"，
+	//如果laddr的端口字段为0，函数将选择一个当前可用的端口，可以用Listener的Addr方法获得该端口。
+
+	pTCPListener, error := net.ListenTCP("tcp4", pTCPAddr)
+	if error != nil {
+		fmt.Fprintf(os.Stdout, "Error: %s", error.Error())
+		return
+	}
+	defer pTCPListener.Close()
+
+	for {
+	    //AcceptTCP接收下一个呼叫，并返回一个新的*TCPConn。
+		pTCPConn, error := pTCPListener.AcceptTCP()
+		if error != nil {
+			fmt.Fprintf(os.Stdout, "Error: %s", error.Error())
+			continue
+		}
+		go connHandler(pTCPConn)
+	}
+}
+
+func connHandler(conn *net.TCPConn) {
+	defer conn.Close()
+	now := time.Now()
+	conn.Write([]byte(now.String() + "\n"))
+}
+
+
+
+func main() {
+
+	//url := "baidu.com:80"
+	url := "facebook.com:80"
+	conn, error := net.DialTimeout("tcp", url, time.Second * 10) // 带有超时限制的conn  ----------------
+	if error != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s", error.Error())
+		return
+	}
+
+	n , error := conn.Write([]byte("HEAD / HTTP/1.0\r\n\r\n"))
+	if error != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s", error.Error())
+		return
+	}
+
+	fmt.Fprintf(os.Stdout, "writed: %d", n)
+
+	buf := make([]byte, 2048)
+	n, error = conn.Read(buf)
+	if error != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s", error.Error())
+		return
+	}
+
+	fmt.Fprintf(os.Stdout, string(buf[:n]))
+}
+
+
+/**
+ * UDP 服务器        ---------------------------------------
+ */
+func main() {
+	pUDPAddr, err := net.ResolveUDPAddr("udp", ":7070")
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+		return
+	}
+
+	pUDPConn, err := net.ListenUDP("udp", pUDPAddr)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+		return
+	}
+
+	defer pUDPConn.Close()
+
+	for {
+
+		buf := make([]byte, 256)
+		n , pUDPAddr, err := pUDPConn.ReadFromUDP(buf)
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+			return
+		}
+		fmt.Fprintf(os.Stdout, "readed: %d", n)
+
+		n, err = pUDPConn.WriteToUDP(buf, pUDPAddr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+			return
+		}
+		fmt.Fprintf(os.Stdout, "writed: %d", n)
+	}
+}
+
+
+/**
+ * UDP 客户端               --------------------------
+ */
+func main() {
+
+	pUDPAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:7070")            --------------
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error ResolveUDPAddr: %s", err.Error())
+		return
+	}
+
+	pUDPConn, err := net.DialUDP("udp", nil, pUDPAddr)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error DialUDP: %s", err.Error())
+		return
+	}
+
+	n, err := pUDPConn.Write([]byte("你好啊！！！"))      --------------
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error WriteToUDP: %s", err.Error())
+		return
+	}
+
+	fmt.Fprintf(os.Stdout, "writed: %d", n)
+
+	buf := make([]byte, 1024)
+	n, _, err = pUDPConn.ReadFromUDP(buf)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error ReadFromUDP: %s", err.Error())
+		return
+	}
+
+	fmt.Fprintf(os.Stdout, "readed: %d  %s", n, string(buf[:n]))
+}
+
+
+/*
+很多时候，服务器会处理多个端口的监听！可以使用select轮询处理这种情况              ------------------------
+ */
+func main() {
+
+	lsr, err := net.Listen("tcp", ":7070")        ----
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+		return
+	}
+
+	for {
+		conn , err := lsr.Accept()         ----------
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+			continue
+		}
+
+		go connHandler(conn)           ---------------
+
+	}
+
+	fmt.Println("Done !")
+}
+
+func connHandler(conn net.Conn) {
+	defer conn.Close()
+
+	var buf[512]byte
+	for {
+		n , err := conn.Read(buf[0:])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+			return
+		}
+		_, err = conn.Write(buf[0:n])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+			return
+		}
+	}
+}
+
+
+
+func main() {
+
+	conn, err := net.Dial("tcp", "192.168.1.97:7070")
+	if err != nil {
+		fmt.Sprint(os.Stderr, "Error: %s", err.Error())
+		return
+	}
+
+
+	go func() {
+		var buf [512]byte
+		for {
+			n , err := conn.Read(buf[0:])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+				return
+			}
+			fmt.Fprintf(os.Stdout, string(buf[0:n]))
+		}
+
+	}()
+
+	for {
+		fmt.Fprintf(os.Stdout, "\n输入:")
+		pReader := bufio.NewReader(os.Stdin)
+		line, _, err := pReader.ReadLine()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+			return
+		}
+		conn.Write(line[0:])
+	}
+}
+
+
+/**
+ UDP Server                      -----------------
+ */
+func main() {
+
+	packetConn, err := net.ListenPacket("udp", ":7070")
+
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "Error: %s", err.Error())
+		return
+	}
+	defer packetConn.Close()
+
+	var buf [512]byte
+	for {
+		n , addr, err := packetConn.ReadFrom(buf[0:])
+		if err != nil {
+			fmt.Fprintf(os.Stdout, "Error: %s", err.Error())
+			return
+		}
+
+		fmt.Fprintf(os.Stdout, "recv: %s", string(buf[0:n]))
+
+		_, err = packetConn.WriteTo(buf[0:n], addr)
+		if err != nil {
+			fmt.Fprintf(os.Stdout, "Error: %s", err.Error())
+			return
+		}
+	}
+
+
+}
+
+
+
+/**
+ UDP Client
+ */
+func main() {
+	conn, err := net.Dial("udp", "127.0.0.1:7070")
+
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "Error: %s", err.Error())
+		return
+	}
+
+	defer conn.Close()
+
+
+	_, err = conn.Write([]byte("你好啊UDP"))
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "Error: %s", err.Error())
+		return
+	}
+
+	var buf [512]byte
+	conn.SetReadDeadline(time.Now().Add(time.Second * 1))  // 阻塞，直到接收到消息,设置阻塞时间1秒        ------------------
+	n, err := conn.Read(buf[0:])
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "Error: %s", err.Error())
+		return
+	}
+
+	fmt.Fprintf(os.Stdout, "recv: %s", string(buf[0:n]))
+
+}
+
+
+

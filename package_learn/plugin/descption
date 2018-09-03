@@ -1,0 +1,160 @@
+新增加的标准库 plugin 提供了初步的插件支持，它允许程序可以在运行的时候动态的加载插件
+
+按照官方的文档, 开发一个插件很简单：
+
+plugin1/main.go
+
+package main
+import "fmt"
+var V int
+func F() { fmt.Printf("Hello, number %d\n", V) }
+插件中定义了变量V和方法F，可以通过下面的命令生成一个so文件：
+
+
+go build -buildmode=plugin -o ../p1.so main.go
+然后通过plugin包可以加载插件：
+
+main.go
+
+p, err := plugin.Open("p1.so")
+if err != nil {
+	panic(err)
+}
+v, err := p.Lookup("V")
+if err != nil {
+	panic(err)
+}
+f, err := p.Lookup("F")
+if err != nil {
+	panic(err)
+}
+*v.(*int) = 7
+f.(func())() // prints "Hello, number 7"
+当然作为插件系统，我们希望可以加载新的插件，来替换已有的插件， 如果你复制p1.so为p2.so,然后上上面的测试代码中再加载p2.so会报错：
+
+main.go
+
+p, err := plugin.Open("p1.so")
+if err != nil {
+	panic(err)
+}
+......
+p, err = plugin.Open("p2.so")
+if err != nil {
+	panic(err)
+}
+错误信息如下：
+
+
+go run main.go
+Hello, number 7
+plugin: plugin plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58 already loaded
+fatal error: plugin: plugin already loaded
+......
+这一步我们还能理解，相同的plugin即使文件名更改了，加载进去还是一样的，所以会报plugin already loaded错误。
+
+我们将plugin1/main.go中的代码稍微改一下：
+
+plugin1/main.go
+
+package main
+import "fmt"
+var V int
+func F() { fmt.Printf("Hello world,  %d\n", V) }
+然后生成插件p2.so：
+
+go build -buildmode=plugin -o ../p2.so main.go
+按说这次我们修改了代码，生成了一个新的插件，如果代码同时加载这两个插件，因为没什么问题，但是运行上面的加载两个插件的测试代码，发现还是出错：
+
+
+go run main.go
+Hello, number 7
+plugin: plugin plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58 already loaded
+fatal error: plugin: plugin already loaded
+......
+怪异吧，两个不同代码的生成插件，居然被认为是同一个插件（plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58）。
+
+使用nm查看两个插件的符号表：
+
+[root@colobu t]# nm p1.so |grep unname
+00000000001acfc0 R go.link.pkghashbytes.plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58
+00000000003f9620 D go.link.pkghash.plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58
+0000000000199080 t local.plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58.F
+0000000000199130 t local.plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58.init
+0000000000199080 T plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58.F
+0000000000199130 T plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58.init
+000000000048e027 B plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58.initdone·
+000000000048e088 B plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58.V
+[root@colobu t]#
+[root@colobu t]#
+[root@colobu t]# nm p2.so |grep unname
+00000000001acfc0 R go.link.pkghashbytes.plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58
+00000000003f9620 D go.link.pkghash.plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58
+0000000000199080 t local.plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58.F
+0000000000199130 t local.plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58.init
+0000000000199080 T plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58.F
+0000000000199130 T plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58.init
+000000000048e027 B plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58.initdone·
+000000000048e088 B plugin/unnamed-f0c47a2a99a0d8e8fb40defabb50f238c78f5d58.V
+[root@colobu t]#
+可以看到两个插件中生成的符号表符号表是相同的，所以被误认为了同一个插件。
+
+这种情况是在特殊情况下产生的，如果两个插件的文件名不同，或者引用包不同，或者引用的cgo不同，则会生成不同的插件，同时加载不会有问题。但是如果文件名相同，相关的引用也相同，则可能生成相同的插件，尽管插件内包含的方法和变量不同，实现也不同。
+
+这是Go plugin生成的时候一个bug: issue#19358, 期望在Go 1.10中解决，目前的解决办法就是插件的go文件使用不同的名字，或者编译的时候指定pluginpath:
+
+go build -ldflags "-pluginpath=p1"-buildmode=plugin -o ../p1.so main.go
+go build -ldflags "-pluginpath=p2"-buildmode=plugin -o ../p2.so main.go
+导致问题的原因正如 LionNatsu 在bug中指出的， Go 判断两个插件是否相同是通过比较pluginpath实现的，如果你在编译的时候指定了不同的pluginpath，则编译出来的插件是不同的，但是如果没有指定pluginpath，则由内部的算法生成, 生成的格式为plugin/unnamed-" + root.Package.Internal.BuildID 。
+
+func computeBuildID(p *Package) 生成一个SHA-1的哈希值作为BuildID。
+
+go/src/cmd/go/internal/load/pkg.go
+func computeBuildID(p *Package) {
+	h := sha1.New()
+	// Include the list of files compiled as part of the package.
+	// This lets us detect removed files. See issue 3895.
+	inputFiles := str.StringList(
+		p.GoFiles,
+		p.CgoFiles,
+		p.CFiles,
+		p.CXXFiles,
+		p.MFiles,
+		p.HFiles,
+		p.SFiles,
+		p.SysoFiles,
+		p.SwigFiles,
+		p.SwigCXXFiles,
+	)
+	for _, file := range inputFiles {
+		fmt.Fprintf(h, "file %s\n", file)
+	}
+	// Include the content of runtime/internal/sys/zversion.go in the hash
+	// for package runtime. This will give package runtime a
+	// different build ID in each Go release.
+	if p.Standard && p.ImportPath == "runtime/internal/sys" && cfg.BuildContext.Compiler != "gccgo" {
+		data, err := ioutil.ReadFile(filepath.Join(p.Dir, "zversion.go"))
+		if err != nil {
+			base.Fatalf("go: %s", err)
+		}
+		fmt.Fprintf(h, "zversion %q\n", string(data))
+	}
+	// Include the build IDs of any dependencies in the hash.
+	// This, combined with the runtime/zversion content,
+	// will cause packages to have different build IDs when
+	// compiled with different Go releases.
+	// This helps the go command know to recompile when
+	// people use the same GOPATH but switch between
+	// different Go releases. See issue 10702.
+	// This is also a better fix for issue 8290.
+	for _, p1 := range p.Internal.Deps {
+		fmt.Fprintf(h, "dep %s %s\n", p1.ImportPath, p1.Internal.BuildID)
+	}
+	p.Internal.BuildID = fmt.Sprintf("%x", h.Sum(nil))
+}
+函数的后半部分为Go不同的版本生成不同的哈希，避免用户使用不同的Go版本生成相同的ID。重点看前半部分，可以发现计算哈希的时候只依赖文件名，并不关心文件的内容，这也是我们前面稍微修改一下插件的代码会生成相同的原因， 如果你在代码中import _ "fmt"也会产生不同的插件。
+
+总之，在Go 1.10之前，为了避免插件冲突， 最好是在编译的时候指定pluginpath, 比如：
+
+
+go build -ldflags "-pluginpath=plugin/hot-$(date +%s)" -buildmode=plugin -o hotload.so hotload.so hotload.go

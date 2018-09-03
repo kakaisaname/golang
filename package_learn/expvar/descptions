@@ -1,0 +1,151 @@
+Go 标准库有一个 expvar 包。 该软件包可以通过 JSON 格式的 HTTP API 公开您的应用程序和 Go 运行时的指标  -----
+
+包 expvar 为公共变量提供了一个标准化的接口，如服务器中的操作计数器。它以 JSON 格式通过 /debug/vars 接口以 HTTP 的方式公开这些公共变量 ---
+
+例子
+在浏览此包的详细信息之前，我想演示使用 expvar 包可以做什么。以下代码创建一个在监听 1818端口的 HTTP 服务器。每个请求 hander() 后，在向访问者发送响应消息之前增加计数器。
+
+package main
+
+import (
+    "expvar"
+    "fmt"
+    "net/http"
+)
+var visits = expvar.NewInt("visits")
+
+func handler(w http.ResponseWriter, r *http.Request) {
+    visits.Add(1)
+    fmt.Fprintf(w, "Hi there, I love %s!", r.URL.Path[1:])
+}
+
+func main() {
+    http.HandleFunc("/", handler)
+    http.ListenAndServe(":1818", nil)
+}
+
+
+导入时，expvar 包将为 http.DefaultServeMux 上的模式 “/debug /vars” 注册一个处理函数。此处理程序返回已在 expvar 包中注册的所有指标。
+运行代码并访问 http://localhost:1818/debug/vars，您将看到如下所示的内容。输出被截断以增加可读性： ---------------------------------------------------
+
+1
+{
+2
+  "cmdline": [
+3
+    "/tmp/go-build872151671/command-line-arguments/_obj/exe/main"
+4
+  ],
+5
+  "memstats": {
+6
+    "Alloc": 397576,
+7
+    "TotalAlloc": 397576,
+8
+    "Sys": 3084288,
+9
+    "Lookups": 7,
+10
+    "Mallocs": 5119,
+11
+    "Frees": 167,
+12
+    "HeapAlloc": 397576,
+13
+    "HeapSys": 1769472,
+14
+    "HeapIdle": 1015808,
+15
+    "HeapInuse": 753664,
+16
+    "HeapReleased": 0,
+17
+    "HeapObjects": 4952,
+18
+    "StackInuse": 327680,
+19
+    "StackSys": 327680,
+20
+    "MSpanInuse": 14240,
+21
+    "MSpanSys": 16384,
+22
+    "MCacheInuse": 4800,
+23
+    "MCacheSys": 16384,
+24
+    "BuckHashSys": 2380,
+25
+    "GCSys": 131072,
+26
+    "OtherSys": 820916,
+27
+    "NextGC": 4194304,
+28
+    "LastGC": 0,
+29
+    "PauseTotalNs": 0,
+30
+    "PauseNs": [
+31
+      0,
+32
+      0,
+33
+    ],
+34
+    "PauseEnd": [
+35
+      0,
+36
+      0
+37
+    ],
+38
+    "GCCPUFraction": 0,
+39
+    "EnableGC": true,
+40
+    "DebugGC": false,
+41
+    "BySize": [
+42
+      {
+43
+        "Size": 16640,
+44
+        "Mallocs": 0,
+45
+        "Frees": 0
+46
+      },
+47
+      {
+48
+        "Size": 17664,
+49
+        "Mallocs": 0,
+50
+        "Frees": 0
+51
+      }
+52
+    ]
+53
+  },
+54
+  "visits": 0
+55
+}
+信息真不少。这是因为默认情况下该包注册了os.Args 和 runtime.Memstats 两个指标。--------
+我想在这个 JSON 响应结束时关注访问计数器。 因为计数器还没有增加，它的值仍然为0。现在通过访问http:// localhost:1818/golang -----------
+来增加计数器，然后返回。计数器不再为0。 -------------
+
+expvar.Publish
+expvar.Var
+expvar.Int
+expvar 包附带了其他几个类型，它们实现了 expvar.Var 接口。其中一个是 expvar.Int，我们已经在演示代码中通过 expvar.NewInt(“visits”) 方式使用它了，
+它会创建一个新的 expvar.Int，并使用 expvar.Publish 注册它，然后返回一个指向新创建的 expvar.Int 的指针
+
+通过 expvar 包，使得展示应用程序指标非常容易。我几乎在我写的每个应用程序中使用它来展示一些指示应用程序运行状况的指标。InfluxDB 和 Grafana，加上一个自定义的聚合器，我可以很容易监控我的应用程序

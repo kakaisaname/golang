@@ -1,0 +1,12 @@
+Package dwarf 提供对从可执行文件加载的 DWARF调试信息的访问，这些信息在 DWARF 2.0 标准中定义，http://dwarfstd.org/doc/dwarf-2.0.0.pdf
+
+
+封装 ELF 实现了对 ELF 对象文件的访问。
+
+gosym 包可以访问由 gc 编译器生成的 Go 二进制文件中嵌入的 Go 符号和行号表。
+
+macho 可以访问 Mach-O 目标文件。
+
+Package pe实现对 PE（Microsoft Windows Portable Executable）文件的访问。
+
+Package plan9obj 实现对 Plan 9 a.out 目标文件的访问。

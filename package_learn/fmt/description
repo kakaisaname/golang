@@ -1,0 +1,94 @@
+// Print 将参数列表 a 中的各个参数转换为字符串并写入到标准输出中。
+// 非字符串参数之间会添加空格，返回写入的字节数。
+func Print(a ...interface{}) (n int, err error)
+
+// Println 功能类似 Print，只不过最后会添加一个换行符。
+// 所有参数之间会添加空格，返回写入的字节数。
+func Println(a ...interface{}) (n int, err error)
+
+// Printf 将参数列表 a 填写到格式字符串 format 的占位符中。
+// 填写后的结果写入到标准输出中，返回写入的字节数。
+func Printf(format string, a ...interface{}) (n int, err error)
+
+------------------------------
+
+// 功能同上面三个函数，只不过将转换结果写入到 w 中。
+func Fprint(w io.Writer, a ...interface{}) (n int, err error)
+func Fprintln(w io.Writer, a ...interface{}) (n int, err error)
+func Fprintf(w io.Writer, format string, a ...interface{}) (n int, err error)
+
+------------------------------
+
+// 功能同上面三个函数，只不过将转换结果以字符串形式返回。
+func Sprint(a ...interface{}) string
+func Sprintln(a ...interface{}) string
+func Sprintf(format string, a ...interface{}) string
+
+------------------------------
+
+// 功能同 Sprintf，只不过结果字符串被包装成了 error 类型。
+func Errorf(format string, a ...interface{}) error
+
+// 示例
+func main() {
+	fmt.Print("a", "b", 1, 2, 3, "c", "d", "\n")
+	fmt.Println("a", "b", 1, 2, 3, "c", "d")
+	fmt.Printf("ab %d %d %d cd\n", 1, 2, 3)
+	// ab1 2 3cd
+	// a b 1 2 3 c d
+	// ab 1 2 3 cd
+
+	if err := percent(30, 70, 90, 160); err != nil {
+		fmt.Println(err)
+	}
+	// 30%
+	// 70%
+	// 90%
+	// 数值 160 超出范围（100）
+}
+
+func percent(i ...int) error {
+	for _, n := range i {
+		if n > 100 {
+			return fmt.Errorf("数值 %d 超出范围（100）", n)
+		}
+		fmt.Print(n, "%\n")
+	}
+	return nil
+}
+
+// Scan 从标准输入中读取数据，并将数据用空白分割并解析后存入 a 提供
+// 的变量中（换行符会被当作空白处理），变量必须以指针传入。
+// 当读到 EOF 或所有变量都填写完毕则停止扫描。
+// 返回成功解析的参数数量。
+
+// Scanln 和 Scan 类似，只不过遇到换行符就停止扫描。
+
+// Scanf 从标准输入中读取数据，并根据格式字符串 format 对数据进行解析
+
+// 对于 Scan 而言，回车视为空白
+func main() {
+	a, b, c := "", 0, false
+	fmt.Scan(&a, &b, &c)
+	fmt.Println(a, b, c)
+	// 在终端执行后，输入 abc 1 回车 true 回车
+	// 结果 abc 1 true
+}
+
+// 对于 Scanln 而言，回车结束扫描
+func main() {
+	a, b, c := "", 0, false
+	fmt.Scanln(&a, &b, &c)
+	fmt.Println(a, b, c)
+	// 在终端执行后，输入 abc 1 true 回车
+	// 结果 abc 1 true
+}
+
+// 格式字符串可以指定宽度
+func main() {
+	a, b, c := "", 0, false
+	fmt.Scanf("%4s%d%t", &a, &b, &c)
+	fmt.Println(a, b, c)
+	// 在终端执行后，输入 1234567true 回车
+	// 结果 1234 567 true
+}

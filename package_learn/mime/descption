@@ -1,0 +1,90 @@
+mime包实现了MIME规范的一部分
+
+func AddExtensionType(ext, typ string) error   ---------------
+
+函数将扩展名和mimetype建立偶联；扩展名应以点号开始，例如”.html”。
+
+ mime.AddExtensionType(".svg", "image/svg+xml")
+ mime.AddExtensionType( ".m3u8", "application/x-mpegURL" );
+ mime.AddExtensionType( ".ts",   "video/MP2T" );
+
+func FormatMediaType(t string, param map[string]string) string    ---------------
+将媒体类型t和参数param连接为一个mime媒体类型，类型和参数都采用小写字母。任一个参数不合法都会返回空字符串。
+
+    s := mime.FormatMediaType("image/svg+xml", map[string]string{"svg": "\u0001"})
+    fmt.Printf("%#v", s)
+
+func ParseMediaType(v string) (mediatype string, params map[string]string, err error)  ----------
+解析一个媒体类型值以及可能的参数
+
+package main
+
+ import (
+         "fmt"
+         "mime"
+         "os"
+ )
+
+ func main() {
+
+         if len(os.Args) != 2 {
+                 fmt.Printf("Usage : %s filename \n", os.Args[0])
+                 os.Exit(1)
+         }
+
+         mType, parameters, err := mime.ParseMediaType(os.Args[1])
+
+         if err != nil {
+                 fmt.Println(err)
+                 os.Exit(1)
+         }
+
+         fmt.Println("Media type : ", mType)
+
+         for param := range parameters {
+                 fmt.Printf("%v = %v\n\n", param, parameters[param])
+         }
+ }
+
+ func TypeByExtension(ext string) string   -----------------
+ 函数返回与扩展名偶联的MIME类型。扩展名应以点号开始，如”.html”。如果扩展名未偶联类型，函数会返回
+
+ package main
+
+ import (
+     "fmt"
+     "mime"
+     "path"
+ )
+
+ func main() {
+     filepath := "./1.png"
+     mimetype := mime.TypeByExtension(path.Ext(filepath))
+     fmt.Println(mimetype)
+
+     filepath = "./2.txt"
+     mimetype = mime.TypeByExtension(path.Ext(filepath))
+     fmt.Println(mimetype)
+
+     filepath = "./3.html"
+     mimetype = mime.TypeByExtension(path.Ext(filepath))
+     fmt.Println(mimetype)
+ }
+ 输出：
+ image/png
+ text/plain; charset=utf-8
+ text/html; charset=utf-8
+
+ 设置Content-Type                    ---------------------
+
+ func SetContentTypeFromExtension(w http.ResponseWriter, extension string) {
+     mime := mime.TypeByExtension(extension)
+     if mime != "" {
+         w.Header().Set("Content-Type", mime)
+     }
+ }
+
+ 解析Content-Type                   -----------------------
+
+ mediatype, params, err := mime.ParseMediaType(contentType)
+ fmt.Printf("mediatype=%v,  params=%v %v, err=%v\n", mediatype, len(params), params, err)

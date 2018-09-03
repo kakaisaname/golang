@@ -1,0 +1,114 @@
+在写命令行程序（工具、server）时，对命令参数进行解析是常见的需求。
+各种语言一般都会提供解析命令行参数的方法或库，以方便程序员使用。
+如果命令行参数纯粹自己写代码来解析，对于比较复杂的，还是挺费劲的。
+在 go 标准库中提供了一个包：flag，方便进行命令行解析 ------------------------
+
+flag 包实现了命令行参数的解析。
+定义 flags 有两种方式 ---------------
+
+flag.Xxx()，其中 Xxx 可以是 Int、String，Bool 等；返回一个相应类型的指针，如：
+var ip = flag.Int("flagname", 1234, "help message for flagname")
+
+第一个参数 ：flag名称为flagname
+第二个参数 ：flagname默认值为1234
+第三个参数 ：flagname的提示信息
+
+返回的ip是指针类型，所以这种方式获取ip的值应该fmt.Println(*ip)
+
+flag.XxxVar()，将 flag 绑定到一个变量上，如：  ------------------
+
+var flagValue int
+flag.IntVar(&flagValue, "flagname", 1234, "help message for flagname")
+
+第一个参数 ：接收flagname的实际值的
+第二个参数 ：flag名称为flagname
+第三个参数 ：flagname默认值为1234
+第四个参数 ：flagname的提示信息
+这种方式获取ip的值fmt.Println(ip)就可以了： ------------
+
+自定义 Value  ------------------
+另外，还可以创建自定义 flag，只要实现 flag.Value 接口即可（要求 receiver 是指针），这时候可以通过如下方式定义该 flag：
+
+flag.Var(&flagVal, "name", "help message for flagname")
+
+解析我喜欢的编程语言，我们希望直接解析到 slice 中，我们可以定义如下 sliceValue类型，然后实现Value接口 ----
+
+package main
+
+import (
+    "flag"
+    "fmt"
+    "strings"
+)
+
+//定义一个类型，用于增加该类型方法
+type sliceValue []string           -----------
+
+//new一个存放命令行参数值的slice
+func newSliceValue(vals []string, p *[]string) *sliceValue {
+    *p = vals
+    return (*sliceValue)(p)
+}
+
+/*
+Value接口：       ------------
+type Value interface {
+    String() string
+    Set(string) error
+}
+实现flag包中的Value接口，将命令行接收到的值用,分隔存到slice里 -------------
+*/
+func (s *sliceValue) Set(val string) error {       -----------
+    *s = sliceValue(strings.Split(val, ","))
+    return nil
+}
+
+//flag为slice的默认值default is me,和return返回值没有关系
+func (s *sliceValue) String() string {                           ---------------
+    *s = sliceValue(strings.Split("default is me", ","))  ----
+    return "It's none of my business"
+}
+
+/*
+可执行文件名 -slice="java,go"  最后将输出[java,go]  -----
+可执行文件名 最后将输出[default is me]
+ */
+func main(){
+    var languages []string
+    flag.Var(newSliceValue([]string{}, &languages), "slice", "I like programming `languages`") --- I like programming `languages  help message
+    flag.Parse()
+
+    //打印结果slice接收到的值
+    fmt.Println(languages)
+}
+
+
+这样通过 -slice "go,php" 这样的形式传递参数，languages 得到的就是 [go, php]。如果不加-slice参数则打印默认值[default is me]  -----------
+
+在所有的 flag 定义完成之后，可以通过调用 flag.Parse() 进行解析。 -------
+
+命令行 flag 的语法有如下三种形式：  -----------------------------
+
+-flag // 只支持bool类型
+-flag=x
+-flag x // 只支持非bool类型
+
+
+ErrHelp：该错误类型用于当命令行指定了 ·-help` 参数但没有定义时。  --------------------
+
+例如1.2.2例子中：如果执行时用了-help或者-h时就会输出help message： ----------
+
+Usage of myflag.exe:
+  -slice languages
+        I like programming languages
+Usage：这是一个函数，用于输出所有定义了的命令行参数和帮助信息（usage message）。一般，当命令行参数解析出错时，该函数会被调用。我们可以指定自己的 Usage 函数，即：flag.Usage = func(){}
+
+例如1.1示例中：如果执行时用了-help时就会输出和-h一样的usage message
+
+NArg和NFlag
+NArg is the number of arguments remaining after flags have been processed.
+获得non-flag个数
+
+NFlag returns the number of command-line flags that have been set.
+获得flag个数
+

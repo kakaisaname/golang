@@ -1,0 +1,315 @@
+(1)os.Create()这个函数是创见一个文件，函数的原型是func Create(name string) (file *File, err error)输入的是名称字符串类型，返回的是一个File的指针和一个error
+import (
+    "fmt"
+    "os"
+    "reflect"
+)
+
+func main() {
+    f, _ := os.Create("widuu_2.go")
+    defer f.Close()
+    fmt.Println(reflect.ValueOf(f).Type()) //*os.File
+}
+
+
+这个函数的原理其实是这样的OpenFile(name, O_RDWR|O_CREATE|O_TRUNC, 0666) O_RDWR也就是说用读写的权限，        ------------
+O_CREATE然后文件存在忽略，不存在创建它，O_TRUNC文件存在截取长度为0，                                      --------------------
+这就解释了为什么我们明明有这个文件，我擦，创建之后哭了~啥都没有了~~用的时候需谨慎，先判断文件是否存在~ --------------
+
+
+(2)os.OpenFile函数的原型是func OpenFile(name string, flag int, perm FileMode) (file *File, err error)要指定文件权限和打开的方式,就是我们上边所用到的  -----------
+import (
+    "fmt"
+    "os"
+)
+func main() {
+    f, _ := os.OpenFile("10.go", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)  --
+    defer f.Close()                                                             ---
+    fmt.Println(f.Stat())                                                                   ----
+}
+
+
+(3)os.Open()这个函数是打开文件使用的，函数原型是func Open(name string) (file *File, err error)， ------------
+返回值就不说了一样的，它的其实原理是这样的OpenFile(name, O_RDONLY, 0)以读文件的模式打开       ----------  以读文件的模式打开
+import (
+    "fmt"
+    "os"
+    "reflect"
+)
+
+func main() {
+    f, _ := os.Open("1.go")
+    defer f.Close()
+}
+
+(4)os.Stat()这个是获取fileinfo的结构描述func Stat(name string) (fi FileInfo, err error)返回了Fileinfo这个结构，  ------------------
+我们再前边也详细讲了，其实它是怎么实现的呢？因为我们没讲syscall所以我们就讲一个，譬如FileInfo底层获取fs := &fileStat{name: basename(name)}然后后边逻辑大家可以看源代码
+import (
+    "fmt"
+    "os"
+)
+
+func main() {
+    f, _ := os.Stat("1.go")  ----------------
+    fmt.Println(f.Size())
+}
+
+(5)os.Fd()返回文件的句柄，函数原型是func (file *File) Fd() uintptr函数是这样的uintptr(file.fd)  ------------------
+ 返回的是文件的句柄，句柄是什么？句柄，是整个windows编程的基础。一个句柄是指使用的一个唯一的整数  -----------------
+import (
+    "fmt"
+    "os"
+)
+
+func main() {
+    f, _ := os.Open("1.go")
+    fmt.Println(f.Fd()) //我的平台句柄是228           -------
+}
+
+
+(6)os.Pipe()这个函数获取的函数的读写指针，函数原型func Pipe() (r *File, w *File, err error)           -----------
+import (
+    "fmt"
+    "os"
+)
+
+func main() {
+    r, w, _ := os.Pipe()
+    fmt.Println(r, w) //&{0xc08402e120} &{0xc08402e180}
+}
+(7)os.NewFile()函数原型是func NewFile(fd uintptr, name string) *File 第一个传入的是句柄，然后是文件名称，
+这个函数并不是真的创建了一个文件，是新建一个文件不保存，然后返回文件的指针      ------------------
+import (
+    "fmt"
+    "os"
+)
+
+func main() {
+    f, _ := os.Open("ini.go")
+    defer f.Close()
+    f1 := os.NewFile(f.Fd(), "ceshi.go") //输如ini.go的句柄   -----------
+    defer f1.Close()
+    fd, _ := f1.Stat()
+    fmt.Println(fd.ModTime())   //返回的是ini.go的创建时间2013-11-27 09:11:50.2793737 +0800 CST
+
+}
+(8)(f *File).Chdir()修改工作目录，函数原型func (f *File) Chdir() error，这个时候f必须是目录了,但是吧这个不支持windows      ----------------
+import (
+    "fmt"
+    "os"
+)
+
+func main() {
+    dir, _ := os.Getwd()
+    fmt.Println(dir)
+    f, _ := os.Open("views")
+    err := f.Chdir()
+    if err != nil {
+        fmt.Println(err)
+    }
+    dir1, _ := os.Getwd()
+    fmt.Println(dir1)
+}
+(9)Chmod(),Chown()都是一样的，当然大家可以直接用os.Chmod(),os.Chdir()函数来改变
+
+
+Chdir()          -------------------
+func Chdir(dir string) error
+Chdir()函数更改当前目录,参数可以是相对路径，也可以是绝对路径,可以通过os.Getwd()获取当前路径。
+
+package main
+import "os"
+
+func main() {
+    os.Chdir("../")
+    os.Chdir("home/hxxz")
+}
+Chmod()                         ----------------------
+func Chmod(name string, mode FileMode) error
+修改文件或文件夹权限
+
+Chown()                -------------------
+func Chown(name string, uid, gid int) error
+该函数用来修改文件或文件夹的拥有者
+
+注意:1、Chown()一般要root用户执行go脚本才会生效，非root用户无法修改权限owner为root,非root用户也无法将owner为root修改为其他用户(go能正常执行，但是在系统上不会产生效果);
+　　　2、uid,gid必须用int型的ID,不支持Name,uid、gid在Linux下可通过id命令查询，具体相关用法参考id --help或博文Linux系统下如果查看用户的UID和GID
+
+Chtimes()                  ----------------
+func Chtimes(name string, atime time.Time, mtime time.Time) error
+该函数用来修改name值描述的文件的访问时间和修改时间
+
+Clearenv()           ---------------------xxxx
+func Clearenv()
+清除所有环境变量(慎用)。
+
+Environ()
+func Environ() []string
+以”key=value”的方式返回一组的环境变量,该函数与Getenv(key string)函数同样都是返回环境变量,但是Getenv(key)通过一个key获取相应的环境变量。相关函数：Getenv()、LookupEnv()。
+
+fmt.Println(os.Environ())
+Executable()
+func Executable() (string, error)
+（该函数是go1.8版本新增加的）用于返回正在运行的可执行文件的路径名，这么看来和os.Args[0]作用大致相同，只是Executable()有俩返回值string和error俩返回值。
+
+Exit()   -------------------------------------------
+func Exit(code int)
+执行Exit()系统退出，并返回code，其中０表示执行成功并退出，非０表示错误并退出，其中执行Exit后程序会直接退出，defer函数不会执行。
+
+Expand()  -
+func Expand(s string, mapping func(string) string) string
+Expand用mapping 函数指定的规则替换字符串中的${var}或者$var（注：变量之前必须有$符号）。摘抄网上例子如下：
+
+mapping := func(s string) string {           --------------------
+   m := map[string]string{"str": "我会替换$str变量", "hello": "我会替换$hello变量"}
+   return m[s]
+}
+    str := os.Expand("你好世界 $str $hello world", mapping) //替换字符串中的$xxx 变量
+    fmt.Println(str)    //你好世界 我会替换$str变量 我会替换$hello变量 world
+    path := os.ExpandEnv("gopath is $GOPATH") //替换字符串中的环境变量
+    fmt.Println(path)   //gopath is /wide/gogogo
+ExpandEnv()
+func ExpandEnv(s string) string
+和Expand()相似，os.ExpandEnv(s)等效于os.Expand(s, os.Getenv())。
+
+Geteuid()                   ---------------
+func Geteuid() int
+返回调用者有效的用户ID
+
+Getuid()                ------------
+func Geteuid() int
+返回调用者实际的用户ID。
+
+应用：判断当前用户是否是root用户 os.Geteuid() != 0
+
+uid与guid区别可参见维基百科
+
+Getegid()                       -     -
+func Getegid() int
+返回调用者有效的组ID。
+
+Getgid()         --------------
+func Getegid() int
+返回调用者实际的组ID
+
+Getenv()              ----------------
+func Getenv(key string) string
+返回指定环境变量名的环境变量值。相关函数：Environ()、LookupEnv()。
+
+Getgroups()             ----------
+func Getgroups() ([]int, error)
+返回调用者所属组的一组ID
+
+Getpagesize()         ------------
+func Getpagesize() int
+获取底层系统内存页的大小
+
+Getpid()                            ---------------
+func Getpid() int
+获取调用者的进程ID
+
+Getppid()                -----------------
+func Getppid() int
+获取调用者的进程的父进程ID
+
+Getwd()                        ---------------
+func Getwd() (dir string, err error)
+Getwd()也是获取当前路径
+
+go语言中获取路径的方法很多，需要总结了
+
+1
+2
+
+Hostname()                                -----------
+func Hostname() (name string, err error)
+获取主机名
+
+IsExist()                                  ------------
+func IsExist(err error) bool
+返回一个bool，说明err是否表示一个关于文件或目录已经存在的错误,如：
+
+err := os.Mkdir("/hmoe", 0755)
+fmt.Println(os.IsExist(err))    //true
+IsNotExist()
+func IsNotExist(err error) bool
+返回一个bool，说明err是否表示一个关于文件或目录不存在的错误,如：
+
+IsPathSeparator()                              ------------
+func IsPathSeparator(c uint8) bool
+判断是不是目录分隔符，其中传入的参数c是uint8类型，通过'/'可以将/转换成47(uint8类型)，可以将\\转换成92(uint8类型)
+
+IsPermission()                       ---------------
+func IsPermission(err error) bool
+判定err错误是否是权限错误。
+
+Lchown()
+func Lchown(name string, uid, gid int) error
+修改文件的uid和gid，如果这个文件是个软链接，则只修改软链接本身。
+
+Link()                                   -----------------
+func Link(oldname, newname string) error
+创建一个从oldname指向newname的硬连接，对一个进行操作，另外一个文件不受影响,创建软链接可使用Symlink()
+
+LookupEnv()
+func LookupEnv(key string) (string, bool)
+1、Getenv()、LookupEnv()传入参数与环境变量名严格一致（包括大小写）,这点不像在Linux系统:echo $PATH与echo $path都能输出PATH路径。相关函数：Environ()、Getenv()。
+2、LookupEnv()与Getenv()区别在于：LookupEnv()可以区分空环境变量或者缺失环境变量，更加清晰的显示环境变量的真实情况。比如：
+
+//如果有环境变量v，内容为空
+fmt.Println(os.Getenv("v"))     //返回`空`
+fmt.Println(os.LookupEnv("v"))  //俩返回值，会返回`空`以及`true`
+//如果不存在环境变量n
+fmt.Println(os.Getenv("n"))     //返回`空`
+fmt.Println(os.LookupEnv("n"))  //俩返回值，会返回`空`以及`false`
+Mkdir()                                                               ------------------
+func Mkdir(name string, perm FileMode) error
+新建文件夹，需要调用者有相关权限,当创建一个已经存在的目录时会报错。
+
+MkdirAll()                  ----------------
+func MkdirAll(path string, perm FileMode) error
+级联新建文件夹，类似与Linux命令的-p参数，需要调用者有相关权限,当创建一个已经存在的目录时不会报错。
+
+NewSyscallError()
+func NewSyscallError(syscall string, err error) error
+返回一个SyscallError 错误，带有给出的系统调用名字和详细的错误信息。也就是说，如果err为空，则返回空
+
+Readlink()                      ----------------
+func Readlink(name string) (string, error)
+获取软链接指向的目标文件。
+
+Remove()                -------------
+func Remove(name string) (string, error)
+删除目录或文件，需要相应权限，参数为目录或文件。
+
+RemoveAll()                  -----------
+func RemoveAll(path string) error
+删除目录以及目录下的全部内容，path不存在的话，返回nil，需要相应权限，参数为路径名。
+
+Rename()                        -------------
+func Rename(oldpath, newpath string) error
+对文件，文件夹重命名，参数可以文件，可以是文件夹，可以是绝对路径，可以是相对路径。
+
+err := os.Rename("main.go1", "main.go2")
+err1 := os.Rename("pkg2", "pkg2.new")
+err2 := os.Rename("../1.go", "2.go") // 这里会将1.go从上级目录直接移动到本级目录并重命名为2.go
+err3 := os.Rename("/home/2.go2", "../1.go")
+SameFile()
+func SameFile(fi1, fi2 FileInfo) bool
+检测文件的信息是否相同，所谓文件信息指的是os.Stat()的值是否完全相同。
+
+Symlink()
+func Symlink(oldname, newname string) error
+创建一个newname的指向oldname的软链接。
+
+TempDir()                  ---------------
+func TempDir() string
+返回你本地的系统temp目录。
+
+Truncate()                   ----------------
+func Truncate(name string, size int64) error
+该函数改变文件的size，即f.Size()
+
+Unsetenv()  -------------
+func Unsetenv(key string) error
+取消设置某个环境变量。

@@ -1,0 +1,122 @@
+字符串,数字互转
+i, err = strconv.Atoi("-42")                    ---------
+//out: int(-42),error
+s = strconv.Itoa(-42)                                           ----------
+//out: string("-42")
+
+
+
+字符串转换其他
+b, err = strconv.ParseBool("true")      --------
+//out: bool(true),error
+f, err = strconv.ParseFloat("3.1415", 64)      ------------
+//out: float(3.1415),error
+i, err = strconv.ParseInt("-42", 10, 64)                ---------10代表进制    64代表宽度
+//out: int(-42),error
+u, err = strconv.ParseUint("42", 10, 64)
+//out: unit(42)
+i64, err := strconv.ParseInt("2147483647", 10, 32)
+//out: int64(2147483647),error
+i := int32(i64)
+//out: int32(2147483647)
+
+
+
+
+
+
+
+其他转换字符串
+s = strconv.FormatBool(true)                         ----------
+//out: string("true")
+s = strconv.FormatFloat(3.1415, 'E', -1, 64)                         --------
+//out: string("3.1415E+00")
+s = strconv.FormatInt(-42, 16)
+//out: string("-2a")
+s = strconv.FormatUint(42, 16)
+//out: string("2a")
+
+
+
+
+
+
+
+ASCII互转码
+list := strconv.Quote("Hello, \u4e16\u754c")                     ------------
+//out: string("Hello, 世界")
+list := strconv.QuoteToASCII("Hello, 世界")                              -------
+//out: string("Hello, \u4e16\u754c")
+
+
+
+
+## 检查是否能ASCII还原字符串
+list := strconv.CanBackquote("\u754c")          ---------
+//out: bool(true)
+list := strconv.QuoteRune('\u4f60')          ----------
+//out: string("你")
+list := strconv.QuoteRuneToASCII('你')              ----
+//out: string("\u4f60")
+list := strconv.QuoteRuneToGraphic('\u4f60')
+//out: string("你")
+
+
+
+
+
+
+## 检查是否Unicode字符
+list := strconv.IsGraphic('你')              -----------
+//out: bool(true)
+## 是否可打印字符（\t不可打印）               ---------
+list := strconv.IsPrint('\u4f60')
+//out: bool(true)
+
+
+
+
+字节切片操作
+list := strconv.AppendBool([]byte{},true)                 --------将各种类型转换为字符串后追加到 []byte 尾部。
+//out: []byte([116,114,117,101])
+//out: string("true")
+list := strconv.AppendInt([]byte{}, 12, 10)             ----------
+//out: []byte([49,50])
+//out: string("12")
+
+list := strconv.AppendFloat([]byte{}, 12.1, 'f',10,32)
+##strconv.AppendFloat(容器,元素,格式,prec,32|64)
+//out: []byte([49 50 46 49 48 48 48 48 48 51 56 49 53])
+//out: string("12.1000003815")
+
+list := strconv.AppendQuote([]byte{}, "你好")
+//out: []byte([34 228 189 160 229 165 189 34])
+//out: string("你好")
+list := strconv.AppendQuoteRune([]byte{}, '你')
+##Rune 单字符 单引号包含字符
+//out: []byte([39 228 189 160 39])
+//out: string("你")
+list := strconv.AppendQuoteRuneToASCII([]byte{}, '你')
+//out: []byte([39 228 189 160 39])
+//out: string("\u4f60")
+list := strconv.AppendQuoteToGraphic([]byte{}, "你好")
+//out: []byte([34 228 189 160 229 165 189 34])
+//out: string("你好")
+##base 进制 2，8，16 范围（2-36）
+list := strconv.AppendUint([]byte{}, 122,2)
+//out: []byte([49 49 49 49 48 49 48])
+//out: string("1111010")
+
+
+
+
+
+
+
+字符处理
+##去掉首位引号
+list,err := strconv.Unquote(`"Hello\t\u4e16\u754c\uff01"`)            ----------------
+//out: string("Hello    世界！")
+strconv.UnquoteChar(`你好啊`, 0)                                ---------
+//out: rune(20320),bool(true),string("好啊"),error(nil)
+

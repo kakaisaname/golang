@@ -1,0 +1,271 @@
+time.Time{}
+时间类型,包含了秒和纳秒以及Location
+
+time.Month()                ------------------
+type Month int
+
+月份.定义了十二个月的常量
+
+Weekday                          ---------------------
+type Weekday int 周,定义了一周的七天
+
+Duration
+time.Duration()
+
+持续时间.定义了以下持续时间类型.多用于时间的加减 需要传入Duration做为参数的时候                                           --------------
+
+const (
+    Nanosecond  Duration = 1
+    Microsecond          = 1000 * Nanosecond
+    Millisecond          = 1000 * Microsecond
+    Second               = 1000 * Millisecond
+    Minute               = 60 * Second
+    Hour                 = 60 * Minute
+)
+
+Location
+在time包里有两个时区变量:    ------------------
+
+time.UTC utc时间
+time.Local 本地时间
+FixedZone(name string, offset int) *Location
+设置时区名,以及与UTC0的时间偏差.返回Location
+
+Timer(定时器)                                                      ---------------------
+定时器只会传达一次到期事件，
+
+type Timer struct {
+    C <-chan Time
+    r runtimeTimer
+}
+Ticker（断续器）                                                                 -------------
+周期性的传达到期事件的装置，
+
+定时器只会传达一次到期事件，断续器会持续工作直到停止
+
+type Ticker struct {
+    C <-chan Time // The channel on which the ticks are delivered.
+    r runtimeTimer
+}
+
+
+time包的常用函数               ------------------------------------
+time.Now()
+获取当前时间,返回Time类型
+
+func Sleep(d Duration)
+表示睡多少时间，睡觉时，是阻塞状态
+
+Since(t Time) Duration
+返回与当前时间的时间差
+
+Unix(sec int64, nsec int64) Time
+根据秒数和纳秒,返回Time类型
+
+（若只有秒或者毫秒，另一个参数为零）
+
+
+func Until(t Time) Duration
+计算t到当前的时间差.返回类型Duration
+
+func After(d Duration) <-chan Time
+返回一个time.C这个管道，d（时间间隔）后会在此管道中放入一个时间点(time.Now())
+
+func AfterFunc(d Duration, f func()) *Timer
+将一个间隔和一个函数给AfterFunc后，间隔时间过后，执行传入的函数（执行一遍）
+
+func NewTimer(d Duration) *Timer
+新的定时创建一个新的定时器，将当前时间的通道后至少持续时间D.
+
+func Parse(layout, value string) (Time, error)
+将字符窜转换为Time类型.
+
+withNanos := "2006-01-02 15:04:05"
+t, _ := time.Parse(withNanos, "2013-10-05 18:30:50")       ----------------------------------
+fmt.Println(t.Year())
+
+
+func ParseDuration(s string) (Duration, error)
+将字duration符窜("ns", "us" (or "碌s"), "ms", "s", "m", "h".)转换为Duration类型.就是纳秒
+
+t, _ := time.ParseDuration("1h")        ----------------
+fmt.Println(t.Seconds())            ---
+func ParseInLocation(layout, value string, loc *Location) (Time, error)
+parseinlocation像解析，但在两个重要方面不同。首先，在时区信息的情况下，分析解释时间UTC；parseinlocation解释时间在给定的位置。其次，当给定一个带偏移或缩写，解析试图匹配与局部的位置；parseinlocation使用给定的位置。
+
+func NewTicker(d Duration) *Ticker
+创建一个新的Ticker
+
+func Tick(d Duration) <-chan Time
+返回一个time.C这个管道，d（时间间隔）后会在此管道中放入一个时间点(time.Now())
+
+func Date(year int, month Month, day, hour, min, sec, nsec int, loc *Location) Time
+设置年月日返回,Time类型
+
+LoadLocation(name string) (*Location, error)
+给定名称返回位置
+
+func FixedZone(name string, offset int) *Location
+给定名称和偏移量返回位置
+
+Time类型
+After(u Time) bool                                                                          --------
+时间类型比较,是否在Time之后
+
+Before(u Time) bool                                                 -----------
+时间类型比较,是否在Time之前
+
+Equal(u Time) bool                                                          -----------
+比较两个时间是否相等
+
+IsZero() bool
+判断时间是否为零值,如果sec和nsec两个属性都是0的话,则该时间类型为0
+
+Date() (year int, month Month, day int)                                                                             ------------
+返回年月日,三个参数
+
+Year() int
+返回年份
+
+Month() Month
+返回月份.是Month类型
+
+Day() int
+返回多少号
+
+Weekday() Weekday                                                                       ------------------
+返回星期几,是Weekday类型
+
+ISOWeek() (year, week int)
+返回年份,和该填是在这年的第几周.
+
+Clock() (hour, min, sec int)
+返回小时,分钟,秒
+
+Hour() int                                                                                          --------
+返回小时
+
+Minute() int                                                                    -----------
+返回分钟
+
+Second() int                                                                --------
+返回秒数
+
+Nanosecond() int                                                        -------
+返回纳秒
+
+Unix() int64                                                                                --------
+返回时间戳,自从1970年1月1号到现在的秒值
+
+UnixNano() int64                                                    -----
+返回时间戳.包含纳秒值
+
+func (t Time) Format(layout string) string
+将时间转化为一个格式
+
+t.Format("2006-01-02 15:04")                                                -------------
+Add(d Duration) Time
+为一个时间,添加的时间类型为Duration.更精确到纳秒.比起AddDate                                                                         -----------
+
+Sub(u Time) Duration                                                                ------------
+计算两个时间的差.返回类型Duration
+
+AddDate(years int, months int, days int) Time                                                           -------
+添加时间.以年月日为参数
+
+UTC() Time
+设置location为UTC,然后返回时间.就是utc为0.比中国晚了八个小时.
+
+Local() Time
+设置location为本地时间.就是电脑时间.
+
+In(loc *Location) Time
+设置location为指定location
+
+Location() *Location
+获取时间的Location,如果是nic,返回UTC,如果为空,则代表本地
+
+Zone() (name string, offset int)
+返回时区,以及与utc的时间偏差
+
+
+
+
+一般时间的操作               ********************************************************
+
+
+获取当前时间
+now := time.Now()
+纳秒/毫秒/秒转换
+fmt.Println(ns / 1e6) //纳秒转毫秒
+fmt.Println(ns / 1e9) //纳秒转秒
+
+
+格式化时间
+time.Now().Format("2006-01-02 15:04")
+字符串转Time
+withNanos := "2006-01-02 15:04:05"
+t, _ := time.Parse(withNanos, "2013-10-05 18:30:50")
+fmt.Println(t.Year())
+
+
+定时器
+go func() {
+    var timer *time.Timer
+    for   {
+        select {
+        case <- func() <-chan time.Time {
+            if timer==nil {
+                timer=time.NewTimer(time.Millisecond)
+            }else {
+                timer.Reset(time.Millisecond)
+            }
+            return timer.C
+        }():
+            fmt.Println("time out")
+            break
+        }
+    }
+}()
+
+
+
+断续器（每隔固定时间执行一次）
+var ticker *time.Ticker=time.NewTicker(time.Millisecond)
+ticks:=ticker.C
+go func() {
+    for tick:=range ticks {
+        fmt.Println(tick)
+    }
+}()
+
+
+定时每天固定时间
+func TestPayCenterWrite(t *testing.T) {
+    timeNow := time.Now() //获取当前时间
+    //获取当前零时
+    zeroHour := time.Date(timeNow.Year(), timeNow.Month(), timeNow.Day(), 0, 0, 0, 0, timeNow.Location())  --------
+
+    //获取下一个零时
+    next := zeroHour.Add(time.Hour * 24)
+    //当前时间和下一个零时创建时间差创建定时器
+    timer := time.NewTimer(next.Sub(timeNow))
+    <-timer.C
+    go func()
+    var ticker *time.Ticker = time.NewTicker(time.Hour * 24)
+    ticks := ticker.C
+    for range ticks {
+        go func()
+    }
+}
+
+
+计算两个点的时间差
+func TestMountSubrouterOn(t *testing.T) {
+    createTime:="2018-05-07 16:20:23"
+    create_Time, _ := time.ParseInLocation("2006-01-02 15:04:05", createTime,time.Now().Location())
+    sub:=time.Now().Sub(create_Time)                   ----------------------
+    fmt.Println(sub.Minutes())
+    fmt.Println(create_Time.Location().String())
+    fmt.Println(time.Now().Location())
+}

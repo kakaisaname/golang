@@ -1,0 +1,353 @@
+Go 语言是强类型语言，并且出于安全的考虑，它不允许不同类型的指针互相转换，比如*int不能转为*float64。但是它提供了 unsafe 包来做转换。\
+
+uintptr
+uintptr 不是 unsafe 包的一部分，但是它总是和 unsafe 一起用。uintptr 是底层内置类型，用于表示指针的值，区别在于go 语言中指针不可以参与计算，
+而 uintptr 可以。另外，指针和 uintptr 也是不可以直接转换的。
+
+特别需要注意的是，GC 不会把 uintptr 当成指针，所以由 uintptr 变量表示的地址处的数据也可能被GC回收。
+。
+
+
+
+unsafe包只有两个类型，三个函数，但是功能很强大。
+
+unsafe 库让 golang 可以像C语言一样操作计算机内存，但这并不是golang推荐使用的，能不用尽量不用，就像它的名字所表达的一样，它绕过了golang的内存安全原则，是不安全的，容易使你的程序出现莫名其妙的问题，不利于程序的扩展与维护。
+
+先简单介绍下Golang指针
+
+*类型：普通指针，用于传递对象地址，不能进行指针运算。
+
+unsafe.Pointer：通用指针类型，用于转换不同类型的指针，不能进行指针运算。
+
+uintptr：用于指针运算，GC 不把 uintptr 当指针，uintptr 无法持有对象。uintptr 类型的目标会被回收。
+
+unsafe.Pointer 可以和 普通指针 进行相互转换。
+
+unsafe.Pointer 可以和 uintptr 进行相互转换。
+
+也就是说 unsafe.Pointer 是桥梁，可以让任意类型的指针实现相互转换，也可以将任意类型的指针转换为 uintptr 进行指针运算。
+
+uintptr这个类型，在golang中，字节长度也是与int一致。通常Pointer不能参与运算，比如你要在某个指针地址上加上一个偏移量，Pointer是不能做这个运算的，那么谁可以呢？就是uintptr类型了，只要将Pointer类型转换成uintptr类型，做完加减法后，转换成Pointer，通过*操作，取值，修改值，随意。
+
+两个类型简介
+// ArbitraryType is here for the purposes of documentation only and is not actually
+// part of the unsafe package. It represents the type of an arbitrary Go expression.
+type ArbitraryType int
+
+type Pointer *ArbitraryType
+ArbitraryType是int的一个别名，在Go中对ArbitraryType赋予特殊的意义。代表一个任意Go表达式类型。
+
+Pointer 是int指针类型的一个别名，在Go中可以把Pointer类型，理解成任何指针的父类型。
+
+下面为官方文档中对Pointer的使用场景介绍
+
+Pointer represents a pointer to an arbitrary type. There are four special operationsavailable for type Pointer that are not available for other types:
+- A pointer value of any type can be converted to a Pointer.
+- A Pointer can be converted to a pointer value of any type.
+- A uintptr can be converted to a Pointer.
+- A Pointer can be converted to a uintptr.
+
+Pointer therefore allows a program to defeat the type system and read and write arbitrary memory. It should be used with extreme care.
+golang的指针类型长度与int类型长度，在内存中占用的字节数是一样的.
+
+ArbitraryType类型的变量也可以是指针。所以，千万不要死磕type后边的那个int
+
+三个函数简介
+// Sizeof takes an expression x of any type and returns the size in bytes
+// of a hypothetical variable v as if v was declared via var v = x.
+// The size does not include any memory possibly referenced by x.
+// For instance, if x is a slice,  Sizeof returns the size of the slice
+// descriptor, not the size of the memory referenced by the slice.
+**func Sizeof(x ArbitraryType) uintptr**
+
+// Offsetof returns the offset within the struct of the field represented by x,
+// which must be of the form structValue.field. In other words, it returns the
+// number of bytes between the start of the struct and the start of the field.
+**func Offsetof(x ArbitraryType) uintptr**
+
+// Alignof takes an expression x of any type and returns the required alignment
+// of a hypothetical variable v as if v was declared via var v = x.
+// It is the largest value m such that the address of v is always zero mod m.
+// It is the same as the value returned by reflect.TypeOf(x).Align().
+// As a special case, if a variable s is of struct type and f is a field
+// within that struct, then Alignof(s.f) will return the required alignment
+// of a field of that type within a struct. This case is the same as the
+// value returned by reflect.TypeOf(s.f).FieldAlign().
+**func Alignof(x ArbitraryType) uintptr**
+通过分析发现，这三个函数的参数均是ArbitraryType类型，就是接受任何类型的变量。
+
+Alignof返回变量对齐字节数量
+Offsetof返回变量指定属性的偏移量，这个函数虽然接收的是任何类型的变量，但是有一个前提，就是变量要是一个struct类型，且还不能直接将这个struct类型的变量当作参数，只能将这个struct类型变量的属性当作参数。
+Sizeof 返回变量在内存中占用的字节数，切记，如果是slice，则不会返回这个slice在内存中的实际占用长度。
+示例
+Sizeof
+unsafe.Sizeof函数返回的就是uintptr类型的值（表达式，即值的大小）：
+
+var p float64 = 99
+fmt.Println(reflect.TypeOf(unsafe.Sizeof(p)))
+fmt.Println(unsafe.Sizeof(p))
+results:
+
+uintptr
+8
+unsafe.Sizeof接受任意类型的值（表达式），返回其占用的字节数，在上面的例子中float64的大小是8bytes。
+
+如果传入一个指针类型的对象会返回多少呢？
+
+type W struct {
+    a byte
+    b int32
+    c int64
+}
+
+var w *W
+fmt.Println(unsafe.Sizeof(w)) //4 or 8
+一般情况下，可能是4或8，因为w是指针类型uintptr，而uintptr是平台相关的，在32位系统下大小是4bytes，在64位系统下是8bytes。
+
+要获取值类型的大小，需要对指针变量进行取值：
+
+fmt.Println(unsafe.Sizeof(*w)) //16
+对齐
+在上面的例子中，*w的大小为16，按照常理来说，byte占用1字节，int32占用4字节，int64占用8字节，大小应该是13才对。这是因为发生了对齐，unsafe.Alignof可以计算对齐值：
+
+unsafe.Alignof(w.a)   // type byte
+unsafe.Alignof(w.b)   // type int32
+unsafe.Alignof(w.c)   // type int64
+分别是1、4、8，因为int32类型的对齐值是4bytes，必须是4的倍数，故byte类型要填充3个字节。而填充后，两者的大小和为8bytes，int64对齐值是8bytes，不需要填充，所以用unsafe.Sizeof获取到结构的大小为4+4+8=16。
+
+反射包的对齐方法
+反射包也有某些方法可用于计算对齐值：
+
+unsafe.Alignof(w)等价于reflect.TypeOf(w).Align。
+
+unsafe.Alignof(w.i)等价于reflect.Typeof(w.i).FieldAlign()。
+
+结构体的对齐值
+如果我们计算的是结构体的对齐值而不是某个字段或者基本类型，那么值会是多少呢？
+
+type W struct {
+    a byte
+    b int32
+    c int64
+}
+
+var w *W
+var w2 W
+
+fmt.Println(unsafe.Alignof(w))
+fmt.Println(unsafe.Alignof(w2))
+fmt.Println(reflect.TypeOf(w).Elem().Align())
+results:
+
+8
+8
+8
+64位机器下，指针对象的对齐值是8，因为指针类型是uintptr。而结构体的值类型却是8bytes的对齐值，这是因为会先进行字段的对齐，字段最大的对齐值是8bytes，因此结构体值类型的对齐值也是8。
+
+更改结构，验证一下：
+
+type W struct {
+    a byte
+    b int32
+    c int32
+}
+var w W
+fmt.Println(unsafe.Alignof(w)) //4
+综合示例
+type T struct {
+    t1 byte
+    t2 int32
+    t3 int64
+    t4 string
+    t5 bool
+}
+
+fmt.Println("----------unsafe.Pointer---------")
+t := &T{1, 2, 3, "this is a example", true}
+ptr := unsafe.Pointer(t)
+t1 := (*byte)(ptr)
+fmt.Println(*t1)
+t2 := (*int32)(unsafe.Pointer(uintptr(ptr) + unsafe.Offsetof(t.t2)))
+*t2 = 99
+fmt.Println(t)
+t3 := (*int64)(unsafe.Pointer(uintptr(ptr) + unsafe.Offsetof(t.t3)))
+fmt.Println(*t3)
+*t3 = 123
+fmt.Println(t)
+results:
+
+----------unsafe.Pointer---------
+1
+&{1 99 3 this is a example true}
+3
+&{1 99 123 this is a example true}
+借助于 unsafe.Pointer，我们实现了像 C 语言中的指针偏移操作。可以看出，这种不安全的操作使得我们可以在任何地方直接访问结构体中未公开的成员，只要能得到这个结构体变量的地址。
+
+
+详细说明
+type ArbitraryType int
+是int的一个别名，但是golang中，对ArbitraryType赋予了特殊的意义，
+
+type Pointer *ArbitraryType
+是int指针类型的一个别名，在golang系统中，可以把Pointer类型，理解成任何指针的亲爹。
+
+func Alignof(x ArbitraryType) uintptr
+Alignof返回变量对齐字节数量
+
+func Offsetof(x ArbitraryType) uintptr
+Offsetof返回变量指定属性的偏移量，这个函数虽然接收的是任何类型的变量，但是这个又一个前提，就是变量要是一个struct类型，且还不能直接将这个struct类型的变量当作参数，只能将这个struct类型变量的属性当作参数。
+
+func Sizeof(x ArbitraryType) uintptr
+Sizeof 返回变量在内存中占用的字节数，切记，如果是slice，则不会返回这个slice在内存中的实际占用长度。
+
+示例
+通过指针修改结构体字段
+package main
+
+import (
+    "fmt"
+    "unsafe"
+)
+
+func main() {
+    s := struct {
+        a byte
+        b byte
+        c byte
+        d int64
+    }{0, 0, 0, 0}
+
+    // 将结构体指针转换为通用指针
+    p := unsafe.Pointer(&s)
+    // 保存结构体的地址备用（偏移量为 0）
+    up0 := uintptr(p)
+    // 将通用指针转换为 byte 型指针
+    pb := (*byte)(p)
+    // 给转换后的指针赋值
+    *pb = 10
+    // 结构体内容跟着改变
+    fmt.Println(s)
+
+    // 偏移到第 2 个字段
+    up := up0 + unsafe.Offsetof(s.b)
+    // 将偏移后的地址转换为通用指针
+    p = unsafe.Pointer(up)
+    // 将通用指针转换为 byte 型指针
+    pb = (*byte)(p)
+    // 给转换后的指针赋值
+    *pb = 20
+    // 结构体内容跟着改变
+    fmt.Println(s)
+
+    // 偏移到第 3 个字段
+    up = up0 + unsafe.Offsetof(s.c)
+    // 将偏移后的地址转换为通用指针
+    p = unsafe.Pointer(up)
+    // 将通用指针转换为 byte 型指针
+    pb = (*byte)(p)
+    // 给转换后的指针赋值
+    *pb = 30
+    // 结构体内容跟着改变
+    fmt.Println(s)
+
+    // 偏移到第 4 个字段
+    up = up0 + unsafe.Offsetof(s.d)
+    // 将偏移后的地址转换为通用指针
+    p = unsafe.Pointer(up)
+    // 将通用指针转换为 int64 型指针
+    pi := (*int64)(p)
+    // 给转换后的指针赋值
+    *pi = 40
+    // 结构体内容跟着改变
+    fmt.Println(s)
+}
+访问数组
+package main
+
+import (
+     "fmt"
+     "unsafe"
+)
+
+type Foo struct {
+     A int
+     B int
+}
+
+func main() {
+     foo := &Foo{1, 2}
+     fmt.Println(foo)
+
+     base := uintptr(unsafe.Pointer(foo))
+     offset := unsafe.Offsetof(foo.A)
+
+     ptr := unsafe.Pointer(base + offset)
+     *(*int)(ptr) = 3
+
+     fmt.Println(foo)
+}
+修改其它包中的结构体私有字段
+方法A（指针遍历）
+package main
+
+import (
+    "fmt"
+    "reflect"
+    "strings"
+    "unsafe"
+)
+
+func main() {
+    // 创建一个 strings 包中的 Reader 对象
+    // 它有三个私有字段：s string、i int64、prevRune int
+    sr := strings.NewReader("abcdef")
+    // 此时 sr 中的成员是无法修改的
+    fmt.Println(sr)
+    // 但是我们可以通过 unsafe 来进行修改
+    // 先将其转换为通用指针
+    p := unsafe.Pointer(sr)
+    // 获取结构体地址
+    up0 := uintptr(p)
+    // 确定要修改的字段（这里不能用 unsafe.Offsetof 获取偏移量，因为是私有字段）
+    if sf, ok := reflect.TypeOf(*sr).FieldByName("i"); ok {
+        // 偏移到指定字段的地址
+        up := up0 + sf.Offset
+        // 转换为通用指针
+        p = unsafe.Pointer(up)
+        // 转换为相应类型的指针
+        pi := (*int64)(p)
+        // 对指针所指向的内容进行修改
+        *pi = 3 // 修改索引
+    }
+    // 看看修改结果
+    fmt.Println(sr)
+    // 看看读出的是什么
+    b, err := sr.ReadByte()
+    fmt.Printf("%c, %v\n", b, err)
+}
+方法B（类型转换）
+// 定义一个和 strings 包中的 Reader 相同的本地结构体
+type Reader struct {
+    s        string
+    i        int64
+    prevRune int
+}
+
+func main() {
+    // 创建一个 strings 包中的 Reader 对象
+    sr := strings.NewReader("abcdef")
+    // 此时 sr 中的成员是无法修改的
+    fmt.Println(sr)
+    // 我们可以通过 unsafe 来进行修改
+    // 先将其转换为通用指针
+    p := unsafe.Pointer(sr)
+    // 再转换为本地 Reader 结构体
+    pR := (*Reader)(p)
+    // 这样就可以自由修改 sr 中的私有成员了
+    (*pR).i = 3 // 修改索引
+    // 看看修改结果
+    fmt.Println(sr)
+    // 看看读出的是什么
+    b, err := sr.ReadByte()
+    fmt.Printf("%c, %v\n", b, err)
+}

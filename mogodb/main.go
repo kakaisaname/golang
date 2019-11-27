@@ -1,231 +1,293 @@
-package module
+package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
-	"log"
-	"net"
-	"net/http"
-	"net/http/httputil"
-	"net/url"
-	"strings"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"os"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
-const (
-	Attempts int = iota							// 0
-	Retry										// 1
+//type  BaseEntity interface {
+//	GetId() 	string
+//	SetId(id string)
+//}
+
+//type PageFilter struct {
+//	SortBy     string
+//	SortMode   int8
+//	Limit      *int64
+//	Skip       *int64
+//	Filter     map[string]interface{}
+//	RegexFiler map[string]string
+//}
+
+//要插入的数据
+type Howie struct {
+	HowieId 	primitive.ObjectID `bson:"_id"`
+	Name 		string
+	Pwd 		string
+	Age 		int64
+	CreateTime 	int64
+	ExpiredTime time.Time
+}
+
+//mongo 的客户端
+type MongoClient struct {
+	Client *mongo.Client
+	Ctx    context.Context
+}
+
+var Mongo *MongoClient
+
+//初始化
+func init() {
+	//保证只执行一次 	**
+	var once sync.Once
+	once.Do(func() {
+		//配置文件的路径 	***
+		//conf, err := config.NewConfig("ini", "D:/project/src/go_dev/day11/config/logagent.conf")
+		//if err != nil {
+		//	fmt.Println("config failed,err: ",err)
+		//	return
+		//}
+		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+		//defer cancel()
+
+		//want, err := readpref.New(readpref.SecondaryMode) //表示只使用辅助节点
+		//if err != nil {
+		//	//checkErr(err)
+		//}
+		//wc := writeconcern.New(writeconcern.WMajority())
+		//readconcern.Majority()
+
+		//opt := options.Client().ApplyURI(conf.String("mongo::uri"))
+		opt := options.Client().ApplyURI("mongodb://127.0.0.1:27017")
+		opt.SetLocalThreshold(3 * time.Second)     //只使用与mongo操作耗时小于3秒的
+		opt.SetMaxConnIdleTime(5 * time.Second)    //指定连接可以保持空闲的最大毫秒数
+		opt.SetMaxPoolSize(200)                    //使用最大的连接数
+		//opt.SetReadPreference(want)                //表示只使用辅助节点
+		//opt.SetReadConcern(readconcern.Majority()) //指定查询应返回实例的最新数据确认为，已写入副本集中的大多数成员
+		//opt.SetWriteConcern(wc)                    //请求确认写操作传播到大多数mongod实例
+		if client, err := mongo.Connect(ctx, opt);err == nil {
+			Mongo = &MongoClient{}
+			Mongo.Ctx = ctx
+			Mongo.Client = client
+		}
+		if err = Mongo.Client.Ping(ctx,readpref.Primary());err != nil {
+			fmt.Println("连接mongo错误")
+			panic(err)
+		} else {
+			fmt.Println("连接成功")
+		}
+	})
+}
+
+var (
+	howieArray = GetHowieArray()
+	insertOneRes    *mongo.InsertOneResult
+	insertManyRes   *mongo.InsertManyResult
+	err 			error
+	howie			Howie
+	cursor          *mongo.Cursor
+	howieArrayEmpty []Howie
+	size            int64
+	delRes          *mongo.DeleteResult
+	updateRes       *mongo.UpdateResult
 )
 
-//定义结构体，保存后端服务器信息
-type Backend struct {
-	URL 			*url.URL
-	Alive 			bool
-	mux 			*sync.RWMutex
-	ReverseProxy 	*httputil.ReverseProxy 		//反向代理  ReverseProxy 是一种 HTTP 处理器，它接收入向请求，
-												// 将请求发送给另一个服务器，然后将响应发送回客户端。
+//删除文档
+func drop()  {
+	collection := Mongo.Client.Database("test").Collection("user")
+	collection.Drop(Mongo.Ctx)
 }
 
-//设置后端服务器的存活状态   设置服务器的存活状态，就用普通的锁
-func (b *Backend) SetAlive(alive bool) {
-	b.mux.Lock()
-	b.Alive = alive
-	b.mux.Unlock()
+//插入数据
+func (m *MongoClient) insertOne() {
+	collection := Mongo.Client.Database("test").Collection("user")
+	if insertOneRes, err = collection.InsertOne(Mongo.Ctx, howieArray[2]);err != nil {
+		fmt.Println("insert err:",err)
+	}
+	fmt.Printf("InsertOne插入的消息ID:%v\n", insertOneRes.InsertedID)
 }
 
-//判断后端服务器是否存活	判断存活状态，用读写锁
-func (b *Backend) IsAlive() (alive bool) {
-	b.mux.RLock()
-	alive = b.Alive
-	b.mux.RUnlock()
+//批量插入数据
+func (m *MongoClient) insertMany() {
+	collection := Mongo.Client.Database("test").Collection("user")
+	if insertManyRes, err = collection.InsertMany(Mongo.Ctx, howieArray[2:]);err != nil {
+		fmt.Println("insert err:",err)
+	}
+	fmt.Printf("InsertOne插入的消息ID:%v\n", insertManyRes.InsertedIDs)
+}
+
+func (m *MongoClient) find() {
+	collection := Mongo.Client.Database("test").Collection("user")
+	var Dinfo = make(map[string]interface{})
+	err = collection.FindOne(Mongo.Ctx, bson.D{{"name", "howie_2"}, {"age", 11}}).Decode(&Dinfo)
+	fmt.Println(Dinfo)
+	fmt.Println("_id", Dinfo["_id"])
+	//map[_id:ObjectID("5ddddd4482784a40d5e4c059") age:11 createtime:1574821188 expiredtime:1574821188505 name:howie_2 pwd:pwd_2]
+	//_id ObjectID("5ddddd4482784a40d5e4c059")
+}
+
+func (m *MongoClient) findOne()  {
+	collection := Mongo.Client.Database("test").Collection("user")
+	if err = collection.FindOne(Mongo.Ctx, bson.D{{"name", "howie_2"}, {"age", 11}}).Decode(&howie);err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("FindOne查询到的数据:%v\n", howie)
+	//FindOne查询到的数据:{ObjectID("5ddddd4482784a40d5e4c059") howie_2 pwd_2 11 1574821188 2019-11-27 02:19:48.505 +0000 UTC}
+}
+
+//查询单条数据后删除
+func (m *MongoClient) findOneAndDelete()  {
+	collection := Mongo.Client.Database("test").Collection("user")
+	if err = collection.FindOneAndDelete(Mongo.Ctx, bson.D{{"name", "howie_3"}}).Decode(&howie); err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("FindOneAndDelete查询到的数据:%v\n", howie)
+	//FindOne查询到的数据:{ObjectID("5ddddd4482784a40d5e4c059") howie_2 pwd_2 11 1574821188 2019-11-27 02:19:48.505 +0000 UTC}
+}
+
+//查找单条数据后修改
+func (m *MongoClient) findOneAndUpdate()  {
+	collection := Mongo.Client.Database("test").Collection("user")
+	if err = collection.FindOneAndUpdate(Mongo.Ctx, bson.D{{"name", "howie_4"}}, bson.M{"$set": bson.M{"name": "这条数据我需要修改了"}}).Decode(&howie); err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("FindOneAndDelete查询到的数据:%v\n", howie)
+	//FindOneAndDelete查询到的数据:{ObjectID("5dddde59e88439086d5f6e0e") howie_4 pwd_4 13 1574821465 2019-11-27 02:24:25.416 +0000 UTC}
+}
+
+//查询单条数据后替换该数据(以前的数据全部清空)
+func (m *MongoClient) FindOneAndReplace()  {
+	collection := Mongo.Client.Database("test").Collection("user")
+	if err = collection.FindOneAndReplace(Mongo.Ctx, bson.D{{"name", "howie_5"}}, bson.M{"hero": "这条数据我替换了"}).Decode(&howie); err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("FindOneAndReplace查询到的数据:%v\n", howie)
+	//FindOneAndReplace查询到的数据:{ObjectID("5dddde59e88439086d5f6e0f") howie_5 pwd_5 14 1574821465 2019-11-27 02:24:25.416 +0000 UTC}
+}
+
+//一次查询多条数据
+// 查询createtime>=3
+// 限制取2条
+// createtime从大到小排序的数据
+func (m *MongoClient) findManyByCondition()  {
+	collection := Mongo.Client.Database("test").Collection("user")
+	if cursor, err = collection.Find(Mongo.Ctx, bson.M{"createtime": bson.M{"$gte": 2}}, options.Find().SetLimit(2), options.Find().SetSort(bson.M{"createtime": -1})); err != nil {
+		fmt.Println(err)
+	}
+	if err = cursor.Err(); err != nil {
+		fmt.Println(err)
+	}
+	defer cursor.Close(context.Background())
+	for cursor.Next(context.Background()) {
+		if err = cursor.Decode(&howie); err != nil {
+			fmt.Println(err)
+		}
+		howieArrayEmpty = append(howieArrayEmpty, howie)
+	}
+	for _, v := range howieArrayEmpty {
+		fmt.Printf("Find查询到的数据ObejectId值%s 值:%v\n", v.HowieId.Hex(), v)
+	}
+	//Find查询到的数据ObejectId值5dddde59e88439086d5f6e0e 值:{ObjectID("5dddde59e88439086d5f6e0e") 这条数据我需要修改了 pwd_4 13 1574821465 2019-11-27 02:24:25.416 +0000 UTC}
+	//Find查询到的数据ObejectId值5dddde59e88439086d5f6e10 值:{ObjectID("5dddde59e88439086d5f6e10") howie_6 pwd_6 15 1574821465 2019-11-27 02:24:25.416 +0000 UTC}
+}
+
+//查询集合中有多少条数据
+func (m *MongoClient) findAll() {
+	collection := Mongo.Client.Database("test").Collection("user")
+	if size, err = collection.CountDocuments(Mongo.Ctx, bson.D{}); err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("Count里面有多少条数据:%d\n", size)
+}
+
+//查询集合里面有多少数据(查询createtime>=3的数据)
+func (m *MongoClient) findAllByCondition() {
+	collection := Mongo.Client.Database("test").Collection("user")
+	if size, err = collection.CountDocuments(Mongo.Ctx, bson.M{"createtime": bson.M{"$gte": 3}}); err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("Count里面有多少条数据:%d\n", size)
+}
+
+//修改一条数据
+func (m *MongoClient) updateOne() {
+	collection := Mongo.Client.Database("test").Collection("user")
+	if updateRes, err = collection.UpdateOne(Mongo.Ctx, bson.M{"name": "howie_2"}, bson.M{"$set": bson.M{"name": "我要改了他的名字"}}); err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("UpdateOne的数据:%d\n", updateRes)
+	//UpdateOne的数据:&{1 1 0 <nil>}
+}
+
+//修改多条数据
+func (m *MongoClient) updateMany() {
+	collection := Mongo.Client.Database("test").Collection("user")
+
+	if updateRes, err = collection.UpdateMany(Mongo.Ctx, bson.M{"createtime": bson.M{"$gte": 3}}, bson.M{"$set": bson.M{"name": "我要批量改了他的名字"}}); err != nil {
+		fmt.Println(err)
+	}
+
+	fmt.Printf("UpdateMany的数据:%d\n", updateRes)
+}
+
+//删除单条数据
+func (m *MongoClient) deleteOne() {
+	collection := Mongo.Client.Database("test").Collection("user")
+	if delRes, err = collection.DeleteOne(Mongo.Ctx, bson.M{"name": "howie_1"}); err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("DeleteOne删除了多少条数据:%d\n", delRes.DeletedCount)
+
+}
+
+//删除多条数据
+func (m *MongoClient) deleteMany() {
+	collection := Mongo.Client.Database("test").Collection("user")
+	if delRes, err = collection.DeleteOne(Mongo.Ctx, bson.M{"name": "howie_1"}); err != nil {
+		fmt.Println(err)
+	}
+	if delRes, err = collection.DeleteMany(Mongo.Ctx, bson.M{"createtime": bson.M{"$gte": 7}}); err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("DeleteMany删除了多少条数据:%d\n", delRes.DeletedCount)
+}
+
+func main() {
+	Mongo.deleteMany()
+}
+
+func GetHowieArray() (data []interface{}) {
+	var i int64
+	for i = 0;i<10;i++ {
+		data = append(data,Howie{
+			HowieId:     primitive.NewObjectID(),
+			Name:        fmt.Sprintf("howie_%d",i+1),
+			Pwd:         fmt.Sprintf("pwd_%d",i+1),
+			Age:         i+10,
+			CreateTime:  time.Now().Unix(),							// 1574820501    时间戳
+			ExpiredTime: time.Now(), 								//2019-11-27 10:07:53.5185863 +0800 CST m=+0.017999801			具体的时间
+		})
+	}
 	return
 }
 
-//跟踪所有后端，以及一个计算器变量 	后端服务池
-type ServerPool struct {
-	backends 		[]*Backend
-	current 		uint64
-}
-
-//添加后端服务器到服务器池
-func (s *ServerPool) AddBackend(backend *Backend) {
-	s.backends = append(s.backends,backend)
-}
-
-//自动增加计数器并返回下一个服务器索引
-//由于会有多客户端连接到负债均衡器，发生竞态条件，加锁不好，使用原子操作
-func (s *ServerPool) NextIndex() int {
-	return int(atomic.AddUint64(&s.current,uint64(1)) % uint64(len(s.backends)))
-}
-
-//找到可用服务器，标记为当前可用服务器   返回下一个可用服务器
-func (s *ServerPool) GetNextPeer() *Backend {
-	next := s.NextIndex()
-	l := len(s.backends) + next 				// start from next and move a full cycle
-	for i := next;i<l;i++ {
-		idx := i % len(s.backends)
-		if s.backends[idx].IsAlive() {			//判断是否存活，如果存活
-			if i != next {
-				atomic.StoreUint64(&s.current,uint64(idx))    //将 idx 存储为current
-			}
-			return s.backends[idx]				//返回存活的服务器
-		}
-	}
-	return nil
-}
-
-//ping 服务器是否可以接通
-func isBackendAlive(u *url.URL) bool {
-	timeout := 2 * time.Second
-	conn, err := net.DialTimeout("tcp", u.Host, timeout)
+func checkErr(err error)  {
 	if err != nil {
-		log.Println("Site unreachable,error: ",err)
-		return false
-	}
-	_ = conn.Close()
-	return true
-}
-
-//HealthCheck pings the backends and update the status   ping
-func (s *ServerPool) HealthCheck() {
-	for _,b := range s.backends {
-		status := "up"
-		alive := isBackendAlive(b.URL)
-		b.SetAlive(alive)
-		if !alive {
-			status = "down"
+		if err == mongo.ErrNoDocuments {
+			fmt.Println("没有查到数据")
+			os.Exit(0)							//正常退出
+		} else {
+			fmt.Println("没有查到数据")
+			os.Exit(0)
 		}
-		log.Printf("%s [%s]\n",b.URL,status)
-	}
-}
-
-//MarkBackendStatus changes a status of a backend
-func (s *ServerPool) MarkBackendStatus(backendUrl *url.URL, alive bool) {
-	for _,b := range s.backends {
-		if b.URL.String() == backendUrl.String() {
-			b.SetAlive(alive)
-			break
-		}
-	}
-}
-
-//Value 返回与此上下文相关联的键值，或为零  **
-//默认为 1
-//context维护重试次数，将重试次数传回lb
-func GetAttemptsFromContext(r *http.Request) int {
-	if attempts,ok := r.Context().Value(Attempts).(int); ok {
-		return attempts
-	}
-	return 1
-}
-
-//默认为0
-func GetRetryFromContext(r *http.Request) int {
-	if retry,ok := r.Context().Value(Retry).(int);ok {
-		return retry
-	}
-	return 0
-}
-
-// 对传入的请求进行负债均衡 ,如果已经达到最大上限，就终结这个请求。
-func lb(w http.ResponseWriter,r *http.Request)  {
-	attempts := GetAttemptsFromContext(r)
-	if attempts > 3 {
-		log.Printf("%s(%s) max attempts reached,terminating\n",r.RemoteAddr,r.URL.Path)
-		http.Error(w,"Service not available", http.StatusServiceUnavailable)
-		return
-	}
-	peer := serverPool.GetNextPeer()																//如果下一个服务器是存活状态
-	if peer != nil {
-		peer.ReverseProxy.ServeHTTP(w,r)
-		return
-	}
-	http.Error(w, "Service not available", http.StatusServiceUnavailable)
-}
-
-//每20s进行一次健康状态检测
-func healthCheck()  {
-	t := time.NewTicker(time.Second * 20)
-	for {
-		select {
-		case <-t.C:
-			log.Println("Starting health check...")
-			serverPool.HealthCheck()
-			log.Println("Health check completed")
-		}
-	}
-}
-
-var serverPool ServerPool
-
-func main() {
-	var serverList string
-	var port int
-	flag.StringVar(&serverList, "backends", "", "Load balanced backends, use commas to separate")
-	flag.IntVar(&port, "port", 3030, "Port to serve")
-	flag.Parse()
-
-	//如果没有serverlist
-	if len(serverList) == 0 {
-		log.Fatal("Please provide one or more backends to load balance")
-	}
-	tokens := strings.Split(serverList, ",")
-	for _,tok := range tokens {
-		//http://localhost:8080/time?aaa=111&b=1212424   url.Parse 会被解析为  time?a=111&b=1212424
-		serverUrl, err := url.Parse(tok)
-		if err != nil {
-			log.Fatal(err)
-		}
-		//返回了一个ReverseProxy对象，在ReverseProxy中的ServeHTTP方法实现了这个具体的过程，主要是对源http包头进行重新封装，而后发送到后端服务器。
-		proxy := httputil.NewSingleHostReverseProxy(serverUrl)
-
-		//主动模式，检查服务器是否运行正常  ReverseProxy 会触发 ErrorHandler 回调函数，我们可以利用它来检查故障。
-		//闭包来实现错误处理器，它可以捕获外部变量错误。它会检查重试次数，如果小于 3，就把同一个请求发送给同一个后端服务器
-		proxy.ErrorHandler = func(writer http.ResponseWriter, request *http.Request, e error) {
-			log.Printf("[%s] %s\n", serverUrl.Host, e.Error())
-			retries := GetRetryFromContext(request)
-			//检查重试次数，如果小于 3，就把同一个请求发送给同一个后端服务器
-			if retries < 3 {
-				select {
-				//重试时间间隔设定在 10 毫秒
-				case <-time.After(10 * time.Millisecond):
-					ctx := context.WithValue(request.Context(),Retry,retries+1)
-					proxy.ServeHTTP(writer, request.WithContext(ctx))
-				}
-				return
-			}
-			// after 3 retries, mark this backend as down            设置这台服务器挂了
-			serverPool.MarkBackendStatus(serverUrl, false)
-
-			// if the same request routing for few attempts with different backends, increase the count
-			attempts := GetAttemptsFromContext(request)
-			log.Printf("%s(%s) Attempting retry %d\n", request.RemoteAddr, request.URL.Path, attempts)
-			ctx := context.WithValue(request.Context(), Attempts, attempts+1)
-			lb(writer, request.WithContext(ctx))
-		}
-
-		//添加服务器 ***   最开始都为可用的，默认
-		serverPool.AddBackend(&Backend{
-			URL:          serverUrl,
-			Alive:        true,
-			ReverseProxy: proxy,
-		})
-		log.Printf("Configured server: %s\n", serverUrl)
-	}
-	// create http server
-	server := http.Server{
-		Addr:    fmt.Sprintf(":%d", port),						//端口
-		Handler: http.HandlerFunc(lb),
-	}
-
-	// start health checking		异步去检测		**
-	go healthCheck()
-
-	log.Printf("Load Balancer started at :%d\n", port)
-	if err := server.ListenAndServe(); err != nil {
-		log.Fatal(err)
 	}
 }

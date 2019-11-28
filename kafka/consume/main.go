@@ -22,6 +22,8 @@ func main() {
 	wg.Wait()
 }
 
+
+//用这个方法  **
 func clusterConsumer(wg *sync.WaitGroup,brokers,topics []string,groupId string)  {
 	defer wg.Done()
 	config := cluster.NewConfig()
@@ -73,6 +75,8 @@ Loop:
 	fmt.Fprintf(os.Stdout, "%s consume %d messages \n", groupId, successes)
 }
 
+
+//这个只能消费（获取）单分区的数据
 func singleConsumer()  {
 	topic := []string{"topic"}
 	Address :=  []string{"192.168.190.161:9092","192.168.190.161:9093","192.168.190.161:9094"}
